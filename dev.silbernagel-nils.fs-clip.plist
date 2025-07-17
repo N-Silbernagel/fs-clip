@@ -22,8 +22,8 @@
 
     <!-- Logging -->
     <key>StandardOutPath</key>
-    <string>{USER_HOME}/fs-clip.out.log</string>
+    <string>{USER_HOME}/Library/Logs/fs-clip/out.log</string>
     <key>StandardErrorPath</key>
-    <string>{USER_HOME}/fs-clip.err.log</string>
+    <string>{USER_HOME}/Library/Logs/fs-clip/err.log</string>
 </dict>
 </plist>
