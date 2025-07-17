@@ -4,7 +4,7 @@
 <dict>
     <!-- Unique identifier for your agent -->
     <key>Label</key>
-    <string>dev.silbernagel-nils.fs-clip</string>
+    <string>dev.nils-silbernagel.fs-clip</string>
 
     <!-- What to run -->
     <key>ProgramArguments</key>
