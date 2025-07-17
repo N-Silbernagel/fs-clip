@@ -39,15 +39,12 @@ func addFileToClipboard(filePath string) error {
 
 	contentType := http.DetectContentType(fileContent)
 
-	log.Println("contentType:", contentType)
-
 	if strings.HasPrefix(contentType, "text/") ||
 		strings.HasPrefix(contentType, "application/vnd.*") ||
 		contentType == "application/rtf" ||
 		contentType == "application/json" ||
 		contentType == "application/xml" ||
 		contentType == "application/pdf" {
-		log.Println("writing text")
 		clipboard.Write(clipboard.FmtText, fileContent)
 		return nil
 	}
