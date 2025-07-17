@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Unique identifier for your agent -->
+    <key>Label</key>
+    <string>dev.silbernagel-nils.fs-clip</string>
+
+    <!-- What to run -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/fs-clip</string>
+    </array>
+
+    <!-- Run immediately when loaded -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Keep it running if it exits -->
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Logging -->
+    <key>StandardOutPath</key>
+    <string>{USER_HOME}/fs-clip.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>{USER_HOME}/fs-clip.err.log</string>
+</dict>
+</plist>
