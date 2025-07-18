@@ -128,7 +128,7 @@ func determineWatchPath(watchDirParam string) string {
 		panic(err)
 	}
 
-	return homeDir + string(os.PathSeparator) + "fs-clip-watch"
+	return homeDir + string(os.PathSeparator) + "copy-to-clipboard"
 }
 
 func createLogger(level slog.Level) *slog.Logger {
