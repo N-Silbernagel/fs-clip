@@ -4,7 +4,7 @@ import (
 	"errors"
 	"github.com/fsnotify/fsnotify"
 	"golang.design/x/clipboard"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -64,8 +64,10 @@ func addFileToClipboard(filePath string) error {
 }
 
 func main() {
-	// TODO can we log with different levels? maybe even with option to configure which levels to log?
-	log.Println("Starting up fs-clip.")
+	logHandler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(logHandler)
+
+	logger.Info("Starting up fs-clip.")
 
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -91,7 +93,7 @@ func main() {
 		panic(err)
 	}
 
-	go watchEvents(watcher)
+	go watchEvents(watcher, logger)
 
 	err = watcher.Add(watchPath)
 	if err != nil {
@@ -102,7 +104,7 @@ func main() {
 	<-make(chan struct{})
 }
 
-func watchEvents(watcher *fsnotify.Watcher) {
+func watchEvents(watcher *fsnotify.Watcher, logger *slog.Logger) {
 	// mutex to avoid concurrently writing to timers
 	mu := sync.Mutex{}
 	// timers to keep track of the files we are "manging" and want to write to clipboard once no more writes happen
@@ -126,14 +128,14 @@ func watchEvents(watcher *fsnotify.Watcher) {
 					err := addFileToClipboard(fileName)
 					if err != nil {
 						// fail silently, shouldn't interrupt the program
-						log.Println("error while adding file to clipboard:", err)
+						logger.Error("error while adding file to clipboard:", err)
 						return
 					}
 
 					err = os.Remove(fileName)
 					if err != nil {
 						// fail silently, shouldn't interrupt the program
-						log.Println("error while removing file:", err)
+						logger.Error("error while removing file:", err)
 					}
 
 					mu.Lock()
@@ -164,7 +166,7 @@ func watchEvents(watcher *fsnotify.Watcher) {
 			if !ok {
 				return
 			}
-			log.Println("File watcher error:", err)
+			logger.Error("File watcher error:", err)
 		}
 	}
 }
