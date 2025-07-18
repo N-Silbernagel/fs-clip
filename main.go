@@ -13,7 +13,7 @@ import (
 )
 
 func ensureDir(dirName string) error {
-	err := os.Mkdir(dirName, 0777)
+	err := os.Mkdir(dirName, 0750)
 	if err == nil {
 		return nil
 	}
@@ -60,7 +60,7 @@ func addFileToClipboard(filePath string) error {
 		return nil
 	}
 
-	return errors.New("unsupported fileContent type:" + contentType)
+	return errors.New("unsupported content type:" + contentType)
 }
 
 func main() {
