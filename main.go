@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -65,17 +66,41 @@ func addFileToClipboard(filePath string) error {
 }
 
 func main() {
-	logger := createLogger()
+	// only log warnings by default, don't log too much to users disk
+	logLevel := slog.LevelWarn
+
+	// allow passing log-level for debugging
+	flag.Func("log-level", "set slog level (DEBUG, INFO, WARN, ERROR)", func(s string) error {
+		return logLevel.UnmarshalText([]byte(s))
+	})
+
+	watchDirParam := flag.String("watch-dir",
+		"",
+		"Directory to watch for files",
+	)
+	flag.Parse()
+
+	logger := createLogger(logLevel)
 
 	logger.Info("Starting up fs-clip.")
 
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		panic(err)
+	var watchPath string
+	if *watchDirParam != "" {
+		absoluteWatchDirParam, err := filepath.Abs(*watchDirParam)
+		if err != nil {
+			panic(err)
+		}
+		watchPath = absoluteWatchDirParam
+	} else {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			panic(err)
+		}
+
+		watchPath = homeDir + string(os.PathSeparator) + "fs-clip-watch"
 	}
 
-	watchPath := homeDir + string(os.PathSeparator) + "fs-clip-watch"
-	err = ensureDir(watchPath)
+	err := ensureDir(watchPath)
 	if err != nil {
 		panic(err)
 	}
@@ -102,18 +127,9 @@ func main() {
 	<-make(chan struct{})
 }
 
-func createLogger() *slog.Logger {
-	// only log warnings by default, don't log too much to users disk
-	logLevel := slog.LevelWarn
-
-	// allow passing log-level for debugging
-	flag.Func("log-level", "set slog level (DEBUG, INFO, WARN, ERROR)", func(s string) error {
-		return logLevel.UnmarshalText([]byte(s))
-	})
-	flag.Parse()
-
+func createLogger(level slog.Level) *slog.Logger {
 	// create custpm logger
-	logHandlerOptions := &slog.HandlerOptions{Level: logLevel}
+	logHandlerOptions := &slog.HandlerOptions{Level: level}
 	logHandler := slog.NewTextHandler(os.Stderr, logHandlerOptions)
 	logger := slog.New(logHandler)
 	return logger
