@@ -10,6 +10,8 @@
     <key>ProgramArguments</key>
     <array>
         <string>/usr/local/bin/fs-clip</string>
+        <string>--watch-dir</string>
+        <string>{WATCH_DIR}</string>
     </array>
 
     <!-- Run immediately when loaded -->

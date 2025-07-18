@@ -6,6 +6,8 @@ LAUNCHAGENTS  := $(HOME)/Library/LaunchAgents/
 COMMAND_LABEL := dev.nils-silbernagel.fs-clip
 PLIST := $(COMMAND_LABEL).plist
 
+WATCHDIR ?= ""
+
 .PHONY: build
 build:
 	go build
@@ -23,7 +25,9 @@ copy-exec:
 .PHONY: copy-plist
 copy-plist:
 	@echo "Copying plist to $(LAUNCHAGENTS)"
-	sed "s|{USER_HOME}|$(HOME)|g" "$(DIR)$(PLIST)" > "$(LAUNCHAGENTS)$(PLIST)"
+	sed "s|{USER_HOME}|$(HOME)|g" "$(DIR)$(PLIST)" \
+		| sed "s|{WATCH_DIR}|$(WATCH_DIR)|g" \
+		> "$(LAUNCHAGENTS)$(PLIST)"
 	chmod 0644 "$(LAUNCHAGENTS)$(PLIST)"
 
 # Unload existing launchd daemon
