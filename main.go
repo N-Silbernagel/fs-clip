@@ -84,21 +84,7 @@ func main() {
 
 	logger.Info("Starting up fs-clip.")
 
-	var watchPath string
-	if *watchDirParam != "" {
-		absoluteWatchDirParam, err := filepath.Abs(*watchDirParam)
-		if err != nil {
-			panic(err)
-		}
-		watchPath = absoluteWatchDirParam
-	} else {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			panic(err)
-		}
-
-		watchPath = homeDir + string(os.PathSeparator) + "fs-clip-watch"
-	}
+	watchPath := determineWatchPath(*watchDirParam)
 
 	err := ensureDir(watchPath)
 	if err != nil {
@@ -125,6 +111,24 @@ func main() {
 
 	// Block main goroutine forever.
 	<-make(chan struct{})
+}
+
+func determineWatchPath(watchDirParam string) string {
+	if watchDirParam != "" {
+		absoluteWatchDirParam, err := filepath.Abs(watchDirParam)
+		if err != nil {
+			panic(err)
+		}
+
+		return absoluteWatchDirParam
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		panic(err)
+	}
+
+	return homeDir + string(os.PathSeparator) + "fs-clip-watch"
 }
 
 func createLogger(level slog.Level) *slog.Logger {
