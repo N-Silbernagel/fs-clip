@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"flag"
 	"github.com/fsnotify/fsnotify"
 	"golang.design/x/clipboard"
 	"log/slog"
@@ -64,8 +65,7 @@ func addFileToClipboard(filePath string) error {
 }
 
 func main() {
-	logHandler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})
-	logger := slog.New(logHandler)
+	logger := createLogger()
 
 	logger.Info("Starting up fs-clip.")
 
@@ -75,13 +75,11 @@ func main() {
 	}
 
 	watchPath := homeDir + string(os.PathSeparator) + "fs-clip-watch"
-
 	err = ensureDir(watchPath)
 	if err != nil {
 		panic(err)
 	}
 
-	// Create new watcher.
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		panic(err)
@@ -104,6 +102,23 @@ func main() {
 	<-make(chan struct{})
 }
 
+func createLogger() *slog.Logger {
+	// only log warnings by default, don't log too much to users disk
+	logLevel := slog.LevelWarn
+
+	// allow passing log-level for debugging
+	flag.Func("log-level", "set slog level (DEBUG, INFO, WARN, ERROR)", func(s string) error {
+		return logLevel.UnmarshalText([]byte(s))
+	})
+	flag.Parse()
+
+	// create custpm logger
+	logHandlerOptions := &slog.HandlerOptions{Level: logLevel}
+	logHandler := slog.NewTextHandler(os.Stderr, logHandlerOptions)
+	logger := slog.New(logHandler)
+	return logger
+}
+
 func watchEvents(watcher *fsnotify.Watcher, logger *slog.Logger) {
 	// mutex to avoid concurrently writing to timers
 	mu := sync.Mutex{}
@@ -122,45 +137,11 @@ func watchEvents(watcher *fsnotify.Watcher, logger *slog.Logger) {
 			fileName := event.Name
 
 			if event.Has(fsnotify.Create) {
-				// creating a new file in the watched folder means it will be "managed" by fs-clip
-				// we create a timer to copy the file to clipboard once no more writes happen
-				writeToClipboardTimer := time.AfterFunc(timerWait, func() {
-					err := addFileToClipboard(fileName)
-					if err != nil {
-						// fail silently, shouldn't interrupt the program
-						logger.Error("error while adding file to clipboard:", err)
-						return
-					}
-
-					err = os.Remove(fileName)
-					if err != nil {
-						// fail silently, shouldn't interrupt the program
-						logger.Error("error while removing file:", err)
-					}
-
-					mu.Lock()
-					delete(timers, fileName)
-					mu.Unlock()
-				})
-
-				mu.Lock()
-				timers[fileName] = writeToClipboardTimer
-				mu.Unlock()
+				handleFileCreateEvent(timerWait, fileName, logger, &mu, timers)
 			}
 
 			if event.Has(fsnotify.Write) {
-				// on file write we reset the timer, if now more writes happen to the file we can happily write it to
-				// the clipboard
-				mu.Lock()
-				timer, ok := timers[fileName]
-				mu.Unlock()
-
-				// if no timer exists for the file, we treat it as not managed by fs-clip
-				if !ok {
-					return
-				}
-
-				timer.Reset(timerWait)
+				handleFileWriteEvent(timerWait, fileName, &mu, timers)
 			}
 		case err, ok := <-watcher.Errors:
 			if !ok {
@@ -169,4 +150,51 @@ func watchEvents(watcher *fsnotify.Watcher, logger *slog.Logger) {
 			logger.Error("File watcher error:", err)
 		}
 	}
+}
+
+func handleFileWriteEvent(timerWait time.Duration, fileName string, mu *sync.Mutex, timers map[string]*time.Timer) {
+	// on file write we reset the timer, if now more writes happen to the file we can happily write it to
+	// the clipboard
+	mu.Lock()
+	timer, ok := timers[fileName]
+	mu.Unlock()
+
+	// if no timer exists for the file, we treat it as not managed by fs-clip
+	if !ok {
+		return
+	}
+
+	timer.Reset(timerWait)
+	return
+}
+
+func handleFileCreateEvent(timerWait time.Duration, fileName string, logger *slog.Logger, mu *sync.Mutex, timers map[string]*time.Timer) {
+	// creating a new file in the watched folder means it will be "managed" by fs-clip
+	// we create a timer to copy the file to clipboard once no more writes happen
+	writeToClipboardTimer := time.AfterFunc(timerWait, func() {
+		onWriteTimerEnd(fileName, logger, mu, timers)
+	})
+
+	mu.Lock()
+	timers[fileName] = writeToClipboardTimer
+	mu.Unlock()
+}
+
+func onWriteTimerEnd(fileName string, logger *slog.Logger, mu *sync.Mutex, timers map[string]*time.Timer) {
+	err := addFileToClipboard(fileName)
+	if err != nil {
+		// fail silently, shouldn't interrupt the program
+		logger.Error("error while adding file to clipboard:", err)
+		return
+	}
+
+	err = os.Remove(fileName)
+	if err != nil {
+		// fail silently, shouldn't interrupt the program
+		logger.Error("error while removing file:", err)
+	}
+
+	mu.Lock()
+	delete(timers, fileName)
+	mu.Unlock()
 }
