@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
+	"time"
 )
 
 func ensureDir(dirName string) error {
@@ -35,6 +37,10 @@ func addFileToClipboard(filePath string) error {
 	fileContent, err := os.ReadFile(filePath)
 	if err != nil {
 		return err
+	}
+
+	if len(fileContent) == 0 {
+		return errors.New("file content is empty")
 	}
 
 	contentType := http.DetectContentType(fileContent)
@@ -94,6 +100,13 @@ func main() {
 }
 
 func watchEvents(watcher *fsnotify.Watcher) {
+	// mutex to avoid concurrently writing to timers
+	mu := sync.Mutex{}
+	// timers to keep track of the files we are "manging" and want to write to clipboard once no more writes happen
+	timers := make(map[string]*time.Timer)
+
+	timerWait := 100 * time.Millisecond
+
 	for {
 		select {
 		case event, ok := <-watcher.Events:
@@ -101,8 +114,48 @@ func watchEvents(watcher *fsnotify.Watcher) {
 				return
 			}
 
+			fileName := event.Name
+
 			if event.Has(fsnotify.Create) {
-				handleFileCreate(event)
+				// creating a new file in the watched folder means it will be "managed" by fs-clip
+				// we create a timer to copy the file to clipboard once no more writes happen
+				writeToClipboardTimer := time.AfterFunc(timerWait, func() {
+					err := addFileToClipboard(fileName)
+					if err != nil {
+						// fail silently, shouldn't interrupt the program
+						log.Println("error while adding file to clipboard:", err)
+						return
+					}
+
+					err = os.Remove(fileName)
+					if err != nil {
+						// fail silently, shouldn't interrupt the program
+						log.Println("error while removing file:", err)
+					}
+
+					mu.Lock()
+					delete(timers, fileName)
+					mu.Unlock()
+				})
+
+				mu.Lock()
+				timers[fileName] = writeToClipboardTimer
+				mu.Unlock()
+			}
+
+			if event.Has(fsnotify.Write) {
+				// on file write we reset the timer, if now more writes happen to the file we can happily write it to
+				// the clipboard
+				mu.Lock()
+				timer, ok := timers[fileName]
+				mu.Unlock()
+
+				// if no timer exists for the file, we treat it as not managed by fs-clip
+				if !ok {
+					return
+				}
+
+				timer.Reset(timerWait)
 			}
 		case err, ok := <-watcher.Errors:
 			if !ok {
@@ -110,20 +163,5 @@ func watchEvents(watcher *fsnotify.Watcher) {
 			}
 			log.Println("File watcher error:", err)
 		}
-	}
-}
-
-func handleFileCreate(event fsnotify.Event) {
-	err := addFileToClipboard(event.Name)
-	if err != nil {
-		// fail silently, shouldn't interrupt the program
-		log.Println("error while adding file to clipboard:", err)
-		return
-	}
-
-	err = os.Remove(event.Name)
-	if err != nil {
-		// fail silently, shouldn't interrupt the program
-		log.Println("error while removing file:", err)
 	}
 }
