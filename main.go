@@ -64,6 +64,9 @@ func addFileToClipboard(filePath string) error {
 }
 
 func main() {
+	// TODO can we log with different levels? maybe even with option to configure which levels to log?
+	log.Println("Starting up fs-clip.")
+
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		panic(err)
