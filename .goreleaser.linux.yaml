@@ -24,3 +24,6 @@ archives:
       {{- if eq .Arch "amd64" }}x86_64
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
+
+checksum:
+  name_template: '{{ .ProjectName }}_{{ .Version }}_checksums_linux.txt'
