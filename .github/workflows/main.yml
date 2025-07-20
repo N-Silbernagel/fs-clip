@@ -18,7 +18,7 @@ jobs:
 
       -
         name: Build docker image
-        run: docker build --tag goreleaser-cross-x11 < build/go-releaser-x11.Dockerfile
+        run: docker build --tag 'goreleaser-cross-x11' --file build/go-releaser-x11.Dockerfile build/
 
       -
         name: Run GoReleaser
