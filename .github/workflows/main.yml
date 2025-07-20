@@ -22,13 +22,13 @@ jobs:
 
       -
         name: Run GoReleaser
-        run: docker run \
-          --rm \
-          -v /var/run/docker.sock:/var/run/docker.sock \
-          -v `pwd`:/go/src/fs-clip \
-          -w /go/src/fs-clip \
-          goreleaser-cross-x11 \
-          release --snapshot --clean --config=.goreleaser.linux.yaml
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "${PWD}:/go/src/fs-clip" \
+            -w /go/src/fs-clip \
+            goreleaser-cross-x11 \
+            goreleaser release --snapshot --clean --config=.goreleaser.linux.yaml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
