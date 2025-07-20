@@ -8,29 +8,32 @@ permissions:
 
 jobs:
   goreleaser-linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       -
         name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
       -
-        name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: 'go.mod'
+        name: Build docker image
+        run: docker build --tag goreleaser-cross-x11 < build/go-releaser-x11.Dockerfile
+
       -
         name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          version: '~> v2'
-          args: release --clean --snapshot --config=.goreleaser.linux.yaml
+        run: docker run \
+          --rm \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -v `pwd`:/go/src/fs-clip \
+          -w /go/src/fs-clip \
+          goreleaser-cross-x11 \
+          release --snapshot --clean --config=.goreleaser.linux.yaml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   goreleaser-mac:
-    runs-on: macos-latest
+    runs-on: macos-14
     steps:
       - name: Checkout
         uses: actions/checkout@v4
