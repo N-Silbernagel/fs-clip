@@ -2,8 +2,6 @@ name: Relese
 
 on:
   push:
-    tags:
-      - '*'
 
 permissions:
   contents: write
@@ -25,6 +23,6 @@ jobs:
         uses: goreleaser/goreleaser-action@v6
         with:
           version: '~> v2'
-          args: release --clean
+          args: release --clean --snapshot ---config=.goreleaser.linux-windows.yaml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
