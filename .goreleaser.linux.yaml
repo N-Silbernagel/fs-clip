@@ -9,7 +9,7 @@ builds:
     goos:
       - linux
     goarch:
-      - arm64
+      - amd64
 
 archives:
   - formats: ['tar.gz']
