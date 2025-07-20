@@ -12,20 +12,15 @@ builds:
       - amd64
 
 archives:
-  - formats: ['tar.gz']
-    # this name template makes the OS and Arch compatible with the results of `uname`.
+  - id: linux
+    formats: [ 'tar.gz' ]
+    files:
+      - LICENSE.txt
+      - README.md
+
     name_template: >-
       {{ .ProjectName }}_
       {{- title .Os }}_
       {{- if eq .Arch "amd64" }}x86_64
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
-    # use zip for windows archives
-    format_overrides:
-      - goos: windows
-        formats: ['zip']
-
-    files:
-      - LICENSE.txt
-      - README.md
-      - Makefile
