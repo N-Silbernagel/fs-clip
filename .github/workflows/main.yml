@@ -2,6 +2,8 @@ name: Relese
 
 on:
   push:
+    tags:
+      - '*'
 
 permissions:
   contents: write
@@ -28,7 +30,7 @@ jobs:
             -v "${PWD}:/go/src/fs-clip" \
             -w /go/src/fs-clip \
             goreleaser-cross-x11 \
-            release --snapshot --clean --config=.goreleaser.linux.yaml
+            release --clean --config=.goreleaser.linux.yaml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -47,6 +49,6 @@ jobs:
         uses: goreleaser/goreleaser-action@v6
         with:
           version: '~> v2'
-          args: release --clean --snapshot --config=.goreleaser.yaml
+          args: release --clean --config=.goreleaser.yaml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
