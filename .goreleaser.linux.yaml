@@ -3,23 +3,27 @@
 version: 2
 
 builds:
-  - id: darwin
+  - id: linux
     env:
       - CGO_ENABLED=1
     goos:
-      - darwin
+      - linux
     goarch:
       - amd64
-      - arm64
 
 archives:
   - formats: ['tar.gz']
+    # this name template makes the OS and Arch compatible with the results of `uname`.
     name_template: >-
       {{ .ProjectName }}_
       {{- title .Os }}_
       {{- if eq .Arch "amd64" }}x86_64
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
+    # use zip for windows archives
+    format_overrides:
+      - goos: windows
+        formats: ['zip']
 
     files:
       - LICENSE.txt

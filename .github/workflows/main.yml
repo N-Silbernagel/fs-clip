@@ -7,7 +7,7 @@ permissions:
   contents: write
 
 jobs:
-  goreleaser:
+  goreleaser-linux:
     runs-on: ubuntu-latest
     steps:
       -
@@ -23,6 +23,23 @@ jobs:
         uses: goreleaser/goreleaser-action@v6
         with:
           version: '~> v2'
-          args: release --clean --snapshot --config=.goreleaser.linux-windows.yaml
+          args: release --clean --snapshot --config=.goreleaser.linux.yaml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  goreleaser-mac:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@v5
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: '~> v2'
+          args: release --clean --snapshot --config=.goreleaser.yaml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
