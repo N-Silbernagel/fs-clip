@@ -23,6 +23,8 @@ builds:
 
 archives:
   - id: darwin
+    builds:
+      - darwin
     formats: ['tar.gz']
     files:
       - LICENSE.txt
@@ -38,6 +40,8 @@ archives:
       {{- if .Arm }}v{{ .Arm }}{{ end }}
 
   - id: windows
+    builds:
+      - windows
     formats: ['zip']
     files:
       - LICENSE.txt
