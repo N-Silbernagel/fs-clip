@@ -51,7 +51,7 @@ reload: unload load
 
 # Install target: symlink, reload
 .PHONY: install
-install: build copy-exec copy-plist reload
+install: copy-exec copy-plist reload
 	@echo "Installation complete."
 
 # Uninstall target: unload daemon and remove symlink
