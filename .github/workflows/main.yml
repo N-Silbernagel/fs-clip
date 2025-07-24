@@ -40,7 +40,8 @@ jobs:
           platforms: linux/amd64
           context: build/
           file: build/goreleaser-cross-x11.Dockerfile
-          tags: goreleaser-cross-x11:latest
+          tags: |
+            ghcr.io/${{ steps.owner.outputs.lower_owner }}/goreleaser-cross-x11:latest
           load: true
           push: true
           cache-from: type=registry,ref=ghcr.io/${{ steps.owner.outputs.lower_owner }}/goreleaser-cross-x11:latest
@@ -53,7 +54,7 @@ jobs:
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v "${PWD}:/go/src/fs-clip" \
             -w /go/src/fs-clip \
-            goreleaser-cross-x11 \
+            goreleaser-cross-x11:latest \
             release --snapshot --clean --config=.goreleaser.linux.yaml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
