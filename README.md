@@ -47,7 +47,11 @@ There is no installer for now. Download the archives from the releases tab and i
 
 ## Configuration
 
-Use make install WATCH_DIR=YOUR_DIRECTORY to configure a directory which should be watched
+Use 
+```bash
+make install WATCH_DIR=YOUR_DIRECTORY
+``` 
+to configure a different directory to watch
 
 ## How It Works
 
