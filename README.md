@@ -78,8 +78,4 @@ FSClip reads files you intentionally place into the watched directory. It does n
 
 ## License
 
-Distributed under the MIT License. See LICENSE for details.
-
-## Need to Customize Further?
-
-Let me know which implementation language, packaging method, or features you actually have and I can tailor the README precisely (removing placeholders and planned items).
+Distributed under the MIT License. See LICENSE.txt for details.
