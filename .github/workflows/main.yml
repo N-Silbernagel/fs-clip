@@ -5,6 +5,7 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   release-linux:
@@ -25,7 +26,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build (with registry cache)
+      - name: Set lowercase owner
+        id: owner
+        env:
+          REPO_OWNER: ${{ github.repository_owner }}
+        run: |
+          # strip to lowercase and expose as an output
+          echo "lower_owner=${REPO_OWNER,,}" >> $GITHUB_OUTPUT
+
+      - name: Build docker image
         uses: docker/build-push-action@v5
         with:
           platforms: linux/amd64
@@ -34,8 +43,8 @@ jobs:
           tags: goreleaser-cross-x11:latest
           load: true
           push: true
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/goreleaser-cross-x11:latest
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/goreleaser-cross-x11:latest,mode=max
+          cache-from: type=registry,ref=ghcr.io/${{ steps.owner.outputs.lower_owner }}/goreleaser-cross-x11:latest
+          cache-to: type=registry,ref=ghcr.io/${{ steps.owner.outputs.lower_owner }}/goreleaser-cross-x11:latest,mode=max
 
       - name: Run GoReleaser
         run: |
