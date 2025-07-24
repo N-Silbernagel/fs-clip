@@ -76,6 +76,13 @@ PRs, issues, and discussions welcome!
 
 FSClip reads files you intentionally place into the watched directory. It does not traverse elsewhere.
 
+## Acknowledgments
+
+FSClip builds on the excellent work of these open-source projects:
+
+- **[golang-design/clipboard](https://github.com/golang-design/clipboard)** – cross-platform clipboard support for Go
+- **[fsnotify/fsnotify](https://github.com/fsnotify/fsnotify)** – filesystem event notifications for Go
+
 ## License
 
 Distributed under the MIT License. See LICENSE.txt for details.
