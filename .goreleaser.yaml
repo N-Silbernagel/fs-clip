@@ -23,7 +23,7 @@ builds:
 
 archives:
   - id: darwin
-    builds:
+    ids:
       - darwin
     formats: ['tar.gz']
     files:
@@ -40,7 +40,7 @@ archives:
       {{- if .Arm }}v{{ .Arm }}{{ end }}
 
   - id: windows
-    builds:
+    ids:
       - windows
     formats: ['zip']
     files:
