@@ -14,7 +14,21 @@ tmpdir="$(mktemp -d)"
 trap 'rm -rf -- "${tmpdir}"' EXIT
 trap 'exit' INT TERM
 
+usage() {
+	this="${1}"
+	cat <<EOF
+${this}: download fs-clip and install it
+
+Usage: ${this} [-d]
+	-d	enables debug logging.
+EOF
+	exit 2
+}
+
 main() {
+	parse_args "${@}"
+	shift "$((OPTIND - 1))"
+
 	GOOS="$(get_goos)"
 	GOARCH="$(get_goarch)"
 	check_goos_goarch "${GOOS}/${GOARCH}"
@@ -37,15 +51,14 @@ main() {
 	# download tarball
 	NAME="fs-clip_${GOOS}${GOOS_EXTRA}_${arch}"
 	TARBALL="${NAME}.${FORMAT}"
-	TARBALL_URL="https://github.com/N-Silbernagel/fs-clip/releases/download/0.0.2/${TARBALL}"
+	TARBALL_URL="https://github.com/N-Silbernagel/fs-clip/releases/download/${VERSION}/${TARBALL}"
 	http_download "${tmpdir}/${TARBALL}" "${TARBALL_URL}" || exit 1
 
 	# download checksums
 	# TODO add linux checksum check
 	CHECKSUMS="fs-clip_${VERSION}_checksums.txt"
-	CHECKSUMS_URL="https://github.com/N-Silbernagel/fs-clip/releases/download/0.0.2/${CHECKSUMS}"
+	CHECKSUMS_URL="https://github.com/N-Silbernagel/fs-clip/releases/download/${VERSION}/${CHECKSUMS}"
 	http_download "${tmpdir}/${CHECKSUMS}" "${CHECKSUMS_URL}" || exit 1
-	cat "${tmpdir}/${CHECKSUMS}"
 
 	# verify checksums
 	hash_sha256_verify "${tmpdir}/${TARBALL}" "${tmpdir}/${CHECKSUMS}"
@@ -54,6 +67,16 @@ main() {
 
 	# install binary
 	make install
+}
+
+parse_args() {
+	while getopts "b:dh?t:" arg; do
+		case "${arg}" in
+		d) LOG_LEVEL=3 ;;
+		h | \?) usage "${0}" ;;
+		*) return 1 ;;
+		esac
+	done
 }
 
 get_goos() {
