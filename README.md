@@ -17,29 +17,9 @@ Some tools can only emit output as files. If your next step is to paste that out
 
 ## Installation
 ### Mac
-#### Arm
-```bash
-curl -fsSL https://github.com/N-Silbernagel/fs-clip/releases/latest/download/fs-clip_Darwin_arm64.tar.gz -o fs-clip.tar.gz
-```
-#### Intel
-```bash
-curl -fsSL https://github.com/N-Silbernagel/fs-clip/releases/latest/download/fs-clip_Darwin_x86_64.tar.gz -o fs-clip.tar.gz
-```
 
 ```bash
-mdkir fs-clip
-```
-
-```bash
-tar -xzvf fs-clip.tar.gz -C fs-clip
-```
-
-```bash
-cd fs-clip
-```
-
-```bash
-make install
+sh -c "$(curl -fsLS https://github.com/N-Silbernagel/fs-clip/releases/latest/download/install.sh)
 ```
 
 ### Linux/Windows
