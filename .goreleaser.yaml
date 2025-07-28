@@ -53,3 +53,7 @@ archives:
       {{- if eq .Arch "amd64" }}x86_64
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
+
+release:
+  extra_files:
+    - glob: ./scripts/install.sh
