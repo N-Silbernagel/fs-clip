@@ -49,10 +49,7 @@ main() {
     ;;
   esac
 
-  case "${GOARCH}" in
-      amd64) arch="x86_64" ;;
-      *) arch="${GOARCH}" ;;
-  esac
+  arch="${GOARCH}"
 
   # download tarball
   NAME="fs-clip_${GOOS}${GOOS_EXTRA}_${arch}"
