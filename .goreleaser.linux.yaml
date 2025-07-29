@@ -25,5 +25,8 @@ archives:
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
 
+release:
+  make_latest: false
+
 checksum:
   name_template: '{{ .ProjectName }}_{{ .Version }}_checksums_linux.txt'

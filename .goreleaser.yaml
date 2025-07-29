@@ -54,5 +54,6 @@ archives:
       {{- if .Arm }}v{{ .Arm }}{{ end }}
 
 release:
+  make_latest: false
   extra_files:
     - glob: ./scripts/install.sh
