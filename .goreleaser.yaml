@@ -31,13 +31,6 @@ archives:
       - README.md
       - dev.nils-silbernagel.fs-clip.plist
 
-    name_template: >-
-      {{ .ProjectName }}_
-      {{- title .Os }}_
-      {{- if eq .Arch "amd64" }}x86_64
-      {{- else }}{{ .Arch }}{{ end }}
-      {{- if .Arm }}v{{ .Arm }}{{ end }}
-
   - id: windows
     ids:
       - windows
@@ -45,11 +38,6 @@ archives:
     files:
       - LICENSE.txt
       - README.md
-
-    name_template: >-
-      {{ .ProjectName }}_
-      {{- title .Os }}_
-      {{ .Arch }}
 
 release:
   make_latest: false

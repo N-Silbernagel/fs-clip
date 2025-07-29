@@ -19,11 +19,6 @@ archives:
       - README.md
       - dev.nils-silbernagel.fs-clip.service
 
-    name_template: >-
-      {{ .ProjectName }}_
-      {{- title .Os }}_
-      {{ .Arch }}
-
 release:
   make_latest: false
 
