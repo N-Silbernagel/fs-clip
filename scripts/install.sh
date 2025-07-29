@@ -52,7 +52,7 @@ main() {
   arch="${GOARCH}"
 
   # download tarball
-  NAME="fs-clip_${GOOS}${GOOS_EXTRA}_${arch}"
+  NAME="fs-clip_${VERSION}_${GOOS}${GOOS_EXTRA}_${arch}"
   TARBALL="${NAME}.${FORMAT}"
   TARBALL_URL="https://github.com/N-Silbernagel/fs-clip/releases/download/${VERSION}/${TARBALL}"
   http_download "${tmpdir}/${TARBALL}" "${TARBALL_URL}" || exit 1
@@ -282,7 +282,7 @@ hash_sha256_verify() {
   checksums="${2}"
   basename="${target##*/}"
 
-  want="$(grep -i "${basename}" "${checksums}" 2>/dev/null | tr '\t' ' ' | cut -d ' ' -f 1)"
+  want="$(grep "${basename}" "${checksums}" 2>/dev/null | tr '\t' ' ' | cut -d ' ' -f 1)"
   if [ -z "${want}" ]; then
     log_err "hash_sha256_verify unable to find checksum for ${target} in ${checksums}"
     return 1
