@@ -10,6 +10,7 @@ set -e
 BINDIR="/usr/local/bin"
 TAGARG=latest
 LOG_LEVEL=2
+WATCH_DIR=""
 
 tmpdir="$(mktemp -d)"
 trap 'rm -rf -- "${tmpdir}"' EXIT
@@ -22,6 +23,7 @@ ${this}: download fs-clip and install it
 
 Usage: ${this} [-d]
 	-d	enables debug logging.
+	-w	specify custom watch directory.
 EOF
 	exit 2
 }
@@ -80,9 +82,8 @@ install_mac() {
   sudo install -m 0755 "${tmpdir}/fs-clip" "${BINDIR}/fs-clip"
 
   echo "Copying plist to ${LAUNCHAGENTS}"
-  # TODO add option to specify watch dir
   sed "s|{USER_HOME}|${HOME}|g" "${tmpdir}/${PLIST}" \
-    | sed "s|{WATCH_DIR}||g" \
+    | sed "s|{WATCH_DIR}|${WATCH_DIR}|g" \
     > "${LAUNCHAGENTS}/${PLIST}"
   chmod 0644 "${LAUNCHAGENTS}/${PLIST}"
 
@@ -97,8 +98,9 @@ install_mac() {
 }
 
 parse_args() {
-	while getopts "b:dh?t:" arg; do
+	while getopts "w:dh?" arg; do
 		case "${arg}" in
+		w) WATCH_DIR="${OPTARG}" ;;
 		d) LOG_LEVEL=3 ;;
 		h | \?) usage "${0}" ;;
 		*) return 1 ;;
