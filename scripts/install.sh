@@ -40,16 +40,18 @@ main() {
   VERSION="${TAG#v}"
 
   BINSUFFIX=
-    FORMAT=tar.gz
-    case "${GOOS}" in
-    windows)
-      BINSUFFIX=.exe
-      FORMAT=zip
-      ;;
-    esac
-    case "${GOARCH}" in
-    *) arch="${GOARCH}" ;;
-    esac
+  FORMAT=tar.gz
+  case "${GOOS}" in
+  windows)
+    BINSUFFIX=.exe
+    FORMAT=zip
+    ;;
+  esac
+
+  case "${GOARCH}" in
+      amd64) arch="x86_64" ;;
+      *) arch="${GOARCH}" ;;
+  esac
 
   # download tarball
   NAME="fs-clip_${GOOS}${GOOS_EXTRA}_${arch}"
@@ -58,8 +60,11 @@ main() {
   http_download "${tmpdir}/${TARBALL}" "${TARBALL_URL}" || exit 1
 
   # download checksums
-  # TODO add linux checksum check
-  CHECKSUMS="fs-clip_${VERSION}_checksums.txt"
+  CHECKSUMS="fs-clip_${VERSION}_checksums"
+  if [ "${GOOS}" = "linux" ]; then
+      CHECKSUMS="${CHECKSUMS}_linux"
+  fi
+  CHECKSUMS="${CHECKSUMS}.txt"
   CHECKSUMS_URL="https://github.com/N-Silbernagel/fs-clip/releases/download/${VERSION}/${CHECKSUMS}"
   http_download "${tmpdir}/${CHECKSUMS}" "${CHECKSUMS_URL}" || exit 1
 
@@ -73,11 +78,11 @@ main() {
   sudo install -m 0755 "${tmpdir}/fs-clip" "${BINDIR}/fs-clip"
 
   # add service configuration
-  if [[ "${GOOS}" == "darwin" ]]; then
+  if [ "${GOOS}" = "darwin" ]; then
     install_mac
   fi
 
-  if [[ "${GOOS}" == "linux" ]]; then
+  if [ "${GOOS}" = "linux" ]; then
       install_linux
   fi
 }
@@ -91,7 +96,8 @@ install_linux() {
 
   echo "Copying service to ${SYSTEMD_DEFINITIONS}"
   # TODO make logging configurable in linux
-  sed "s|{WATCH_DIR}|${WATCH_DIR}|g" \
+  mkdir -p ${SYSTEMD_DEFINITIONS}
+  sed "s|{WATCH_DIR}|${WATCH_DIR}|g" "${tmpdir}/${SERVICE}" \
     > "${SYSTEMD_DEFINITIONS}/${SERVICE}"
   chmod 0644 "${SYSTEMD_DEFINITIONS}/${SERVICE}"
 
