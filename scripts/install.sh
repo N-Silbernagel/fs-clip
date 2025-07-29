@@ -69,11 +69,40 @@ main() {
 	(cd -- "${tmpdir}" && untar "${TARBALL}")
 
 	# install binary
-	install_mac
+	if [[ "${GOOS}" == "darwin" ]]; then
+    install_mac
+	fi
+
+	if [[ "${GOOS}" == "linux" ]]; then
+      install_linux
+  fi
+}
+
+install_linux() {
+  LAUNCHAGENTS="${HOME}/Library/LaunchAgents"
+  COMMAND_LABEL="dev.nils-silbernagel.fs-clip"
+  PLIST="${COMMAND_LABEL}.plist"
+
+  echo "Copying fs-clip to ${BINDIR}"
+  sudo install -m 0755 "${tmpdir}/fs-clip" "${BINDIR}/fs-clip"
+
+  echo "Copying plist to ${LAUNCHAGENTS}"
+  sed "s|{USER_HOME}|${HOME}|g" "${tmpdir}/${PLIST}" \
+    | sed "s|{WATCH_DIR}|${WATCH_DIR}|g" \
+    > "${LAUNCHAGENTS}/${PLIST}"
+  chmod 0644 "${LAUNCHAGENTS}/${PLIST}"
+
+  echo "Unloading launchd plist"
+  if launchctl list | grep -q "${COMMAND_LABEL}"; then \
+      echo "Unloading current instance of ${PLIST}"; \
+      launchctl unload "${LAUNCHAGENTS}/${PLIST}"; \
+  fi
+
+  echo "Loading launchd plist"
+  launchctl load "${LAUNCHAGENTS}/${PLIST}"
 }
 
 install_mac() {
-  # TODO separate linux and mac install scripts
   LAUNCHAGENTS="${HOME}/Library/LaunchAgents"
   COMMAND_LABEL="dev.nils-silbernagel.fs-clip"
   PLIST="${COMMAND_LABEL}.plist"
