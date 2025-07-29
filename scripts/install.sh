@@ -24,6 +24,7 @@ ${this}: download fs-clip and install it
 Usage: ${this} [-d]
   -d	enables debug logging.
   -w	specify custom watch directory.
+  -t	sets the tag, default is ${TAGARG}.
 EOF
   exit 2
 }
@@ -133,9 +134,10 @@ install_mac() {
 }
 
 parse_args() {
-  while getopts "w:dh?" arg; do
+  while getopts "w:dh?t:" arg; do
     case "${arg}" in
     w) WATCH_DIR="${OPTARG}" ;;
+    t) TAGARG="${OPTARG}" ;;
     d) LOG_LEVEL=3 ;;
     h | \?) usage "${0}" ;;
     *) return 1 ;;
