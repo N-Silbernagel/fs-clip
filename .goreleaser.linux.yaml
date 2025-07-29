@@ -17,6 +17,7 @@ archives:
     files:
       - LICENSE.txt
       - README.md
+      - dev.nils-silbernagel.fs-clip.service
 
     name_template: >-
       {{ .ProjectName }}_
