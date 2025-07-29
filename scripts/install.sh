@@ -69,6 +69,10 @@ main() {
   (cd -- "${tmpdir}" && untar "${TARBALL}")
 
   # install binary
+  echo "Copying fs-clip to ${BINDIR}"
+  sudo install -m 0755 "${tmpdir}/fs-clip" "${BINDIR}/fs-clip"
+
+  # add service configuration
   if [[ "${GOOS}" == "darwin" ]]; then
     install_mac
   fi
@@ -79,36 +83,32 @@ main() {
 }
 
 install_linux() {
-  LAUNCHAGENTS="${HOME}/Library/LaunchAgents"
+  # TODO test on linux
+
+  SYSTEMD_DEFINITIONS="${HOME}/.config/systemd/user"
   COMMAND_LABEL="dev.nils-silbernagel.fs-clip"
-  PLIST="${COMMAND_LABEL}.plist"
+  SERVICE="${COMMAND_LABEL}.service"
 
-  echo "Copying fs-clip to ${BINDIR}"
-  sudo install -m 0755 "${tmpdir}/fs-clip" "${BINDIR}/fs-clip"
+  echo "Copying service to ${SYSTEMD_DEFINITIONS}"
+  # TODO make logging configurable in linux
+  sed "s|{WATCH_DIR}|${WATCH_DIR}|g" \
+    > "${SYSTEMD_DEFINITIONS}/${SERVICE}"
+  chmod 0644 "${SYSTEMD_DEFINITIONS}/${SERVICE}"
 
-  echo "Copying plist to ${LAUNCHAGENTS}"
-  sed "s|{USER_HOME}|${HOME}|g" "${tmpdir}/${PLIST}" \
-    | sed "s|{WATCH_DIR}|${WATCH_DIR}|g" \
-    > "${LAUNCHAGENTS}/${PLIST}"
-  chmod 0644 "${LAUNCHAGENTS}/${PLIST}"
-
-  echo "Unloading launchd plist"
-  if launchctl list | grep -q "${COMMAND_LABEL}"; then \
-      echo "Unloading current instance of ${PLIST}"; \
-      launchctl unload "${LAUNCHAGENTS}/${PLIST}"; \
+  echo "Unloading systemd service"
+  if systemctl cat ${COMMAND_LABEL}; then \
+      echo "Unloading current instance of ${SERVICE}"; \
+      systemctl disable --now "${SERVICE}"; \
   fi
 
-  echo "Loading launchd plist"
-  launchctl load "${LAUNCHAGENTS}/${PLIST}"
+  echo "Loading systemd service"
+  systemctl enable --now "${SERVICE}"
 }
 
 install_mac() {
   LAUNCHAGENTS="${HOME}/Library/LaunchAgents"
   COMMAND_LABEL="dev.nils-silbernagel.fs-clip"
   PLIST="${COMMAND_LABEL}.plist"
-
-  echo "Copying fs-clip to ${BINDIR}"
-  sudo install -m 0755 "${tmpdir}/fs-clip" "${BINDIR}/fs-clip"
 
   echo "Copying plist to ${LAUNCHAGENTS}"
   sed "s|{USER_HOME}|${HOME}|g" "${tmpdir}/${PLIST}" \
