@@ -2,41 +2,12 @@ name: Release
 
 on:
   push:
-    tags:
-      - '*'
 
 permissions:
   contents: write
   packages: write
 
 jobs:
-  release-linux:
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-
-      - name: Install X11 dev libraries
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y --no-install-recommends \
-            xorg-dev libx11-dev libxfixes-dev libxi-dev libxrender-dev libxtst-dev
-
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          version: '~> v2'
-          args: release --clean --config=.goreleaser.linux.yaml
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   release-mac-windows:
     runs-on: macos-14
     steps:
@@ -52,6 +23,6 @@ jobs:
         uses: goreleaser/goreleaser-action@v6
         with:
           version: '~> v2'
-          args: release --clean --config=.goreleaser.yaml
+          args: release --snapshot --clean --config=.goreleaser.yaml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
