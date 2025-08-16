@@ -35,14 +35,14 @@ func ensureDir(dirName string) error {
 	return nil
 }
 
-func addFileToClipboard(filePath string) error {
+func addFileToClipboard(filePath string, logger *slog.Logger) {
 	fileContent, err := os.ReadFile(filePath)
 	if err != nil {
-		return err
+		logger.Warn("Error reading file: " + err.Error())
 	}
 
 	if len(fileContent) == 0 {
-		return errors.New("file content is empty")
+		logger.Warn("File " + filePath + " is empty.")
 	}
 
 	contentType := http.DetectContentType(fileContent)
@@ -51,15 +51,15 @@ func addFileToClipboard(filePath string) error {
 		contentType == "application/json" ||
 		contentType == "application/xml" {
 		clipboard.Write(clipboard.FmtText, fileContent)
-		return nil
+		return
 	}
 
 	if strings.HasPrefix(contentType, "image/") {
 		clipboard.Write(clipboard.FmtImage, fileContent)
-		return nil
+		return
 	}
 
-	return errors.New("unsupported content type:" + contentType)
+	logger.Info("File " + filePath + " has unsupported content type: " + contentType)
 }
 
 func main() {
@@ -198,17 +198,12 @@ func handleFileCreateEvent(timerWait time.Duration, fileName string, logger *slo
 }
 
 func onWriteTimerEnd(fileName string, logger *slog.Logger, mu *sync.Mutex, timers map[string]*time.Timer) {
-	err := addFileToClipboard(fileName)
-	if err != nil {
-		// fail silently, shouldn't interrupt the program
-		logger.Error("error while adding file to clipboard:", err)
-		return
-	}
+	addFileToClipboard(fileName, logger)
 
-	err = os.Remove(fileName)
+	err := os.Remove(fileName)
 	if err != nil {
 		// fail silently, shouldn't interrupt the program
-		logger.Error("error while removing file:", err)
+		logger.Warn("error while removing file:", err)
 	}
 
 	mu.Lock()
