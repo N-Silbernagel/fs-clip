@@ -7,7 +7,7 @@
 
 set -e
 
-BINDIR="/usr/local/bin"
+BINDIR=""
 TAGARG=latest
 LOG_LEVEL=2
 WATCH_DIR=""
@@ -21,8 +21,9 @@ usage() {
   cat <<EOF
 ${this}: download fs-clip and install it
 
-Usage: ${this} [-d]
+Usage: ${this} [-d] [-b bindir] [-w watchdir] [-t tag]
   -d	enables debug logging.
+  -b	specify install directory for the fs-clip binary.
   -w	specify custom watch directory.
   -t	sets the tag, default is ${TAGARG}.
 EOF
@@ -36,6 +37,10 @@ main() {
   GOOS="$(get_goos)"
   GOARCH="$(get_goarch)"
   check_goos_goarch "${GOOS}/${GOARCH}"
+
+  if [ -z "${BINDIR}" ]; then
+    BINDIR="${HOME}/.local/bin"
+  fi
 
   TAG="$(real_tag "${TAGARG}")"
   VERSION="${TAG#v}"
@@ -73,7 +78,16 @@ main() {
 
   # install binary
   echo "Copying fs-clip to ${BINDIR}"
-  sudo install -m 0755 "${tmpdir}/fs-clip" "${BINDIR}/fs-clip"
+  if mkdir -p "${BINDIR}" 2>/dev/null && install -m 0755 "${tmpdir}/fs-clip" "${BINDIR}/fs-clip" 2>/dev/null; then
+    :
+  elif is_command sudo; then
+    log_info "installing to ${BINDIR} requires elevated permissions"
+    sudo mkdir -p "${BINDIR}"
+    sudo install -m 0755 "${tmpdir}/fs-clip" "${BINDIR}/fs-clip"
+  else
+    log_err "unable to install to ${BINDIR}; choose a writable path with -b"
+    return 1
+  fi
 
   # add service configuration
   if [ "${GOOS}" = "darwin" ]; then
@@ -94,8 +108,9 @@ install_linux() {
 
   echo "Copying service to ${SYSTEMD_DEFINITIONS}"
   # TODO make logging configurable in linux
-  mkdir -p ${SYSTEMD_DEFINITIONS}
+  mkdir -p "${SYSTEMD_DEFINITIONS}"
   sed "s|{WATCH_DIR}|${WATCH_DIR}|g" "${tmpdir}/${SERVICE}" \
+    | sed "s|{BINARY_PATH}|${BINDIR}/fs-clip|g" \
     > "${SYSTEMD_DEFINITIONS}/${SERVICE}"
   chmod 0644 "${SYSTEMD_DEFINITIONS}/${SERVICE}"
 
@@ -111,12 +126,16 @@ install_linux() {
 
 install_mac() {
   LAUNCHAGENTS="${HOME}/Library/LaunchAgents"
+  LOGDIR="${HOME}/Library/Logs/fs-clip"
   COMMAND_LABEL="dev.nils-silbernagel.fs-clip"
   PLIST="${COMMAND_LABEL}.plist"
+
+  mkdir -p "${LAUNCHAGENTS}" "${LOGDIR}"
 
   echo "Copying plist to ${LAUNCHAGENTS}"
   sed "s|{USER_HOME}|${HOME}|g" "${tmpdir}/${PLIST}" \
     | sed "s|{WATCH_DIR}|${WATCH_DIR}|g" \
+    | sed "s|{BINARY_PATH}|${BINDIR}/fs-clip|g" \
     > "${LAUNCHAGENTS}/${PLIST}"
   chmod 0644 "${LAUNCHAGENTS}/${PLIST}"
 
@@ -131,8 +150,9 @@ install_mac() {
 }
 
 parse_args() {
-  while getopts "w:dh?t:" arg; do
+  while getopts "b:w:dh?t:" arg; do
     case "${arg}" in
+    b) BINDIR="${OPTARG}" ;;
     w) WATCH_DIR="${OPTARG}" ;;
     t) TAGARG="${OPTARG}" ;;
     d) LOG_LEVEL=3 ;;
