@@ -10,6 +10,9 @@ Install fs-clip.
 .PARAMETER WatchDir
 Specifies the directory to watch. "~/copy-to-clipboard" is the default. Alias: w
 
+.PARAMETER InstallDir
+Specifies where fs-clip.exe is installed. "%LOCALAPPDATA%\\Programs\\fs-clip" is the default. Alias: i
+
 .PARAMETER Tag
 Specifies the version of fs-clip to install. "latest" is the default. Alias: t
 
@@ -25,7 +28,12 @@ param (
     [Parameter(Mandatory = $false)]
     [Alias('w')]
     [string]
-    $WatchDir = (Join-Path -Path (Resolve-Path -Path '.') -ChildPath 'bin'),
+    $WatchDir = (Join-Path -Path $HOME -ChildPath 'copy-to-clipboard'),
+
+    [Parameter(Mandatory = $false)]
+    [Alias('i')]
+    [string]
+    $InstallDir = (if ($env:LOCALAPPDATA) { Join-Path -Path $env:LOCALAPPDATA -ChildPath 'Programs\fs-clip' } else { Join-Path -Path $HOME -ChildPath '.local/bin/fs-clip' }),
 
     [Parameter(Mandatory = $false)]
     [Alias('t')]
@@ -35,7 +43,7 @@ param (
     [Parameter(Mandatory = $false)]
     [Alias('d')]
     [switch]
-    $EnableDebug,
+    $EnableDebug
 )
 
 function Write-DebugVariable {
@@ -52,6 +60,29 @@ function Invoke-CleanUp ($directory) {
     if (($null -ne $directory) -and (Test-Path -Path $directory)) {
         Write-Debug "removing ${directory}"
         Remove-Item -Path $directory -Recurse -Force
+    }
+}
+
+function Add-PathEntryIfMissing ([string]$entry) {
+    $userPath = [System.Environment]::GetEnvironmentVariable('Path', 'User')
+    $parts = @()
+    if ($userPath) {
+        $parts = $userPath -split ';' | Where-Object { $_ }
+    }
+    if ($parts -contains $entry) {
+        return
+    }
+
+    $newParts = @($parts + $entry)
+    $newUserPath = ($newParts -join ';')
+    [System.Environment]::SetEnvironmentVariable('Path', $newUserPath, 'User')
+
+    $processParts = @()
+    if ($env:Path) {
+        $processParts = $env:Path -split ';' | Where-Object { $_ }
+    }
+    if (-not ($processParts -contains $entry)) {
+        $env:Path = (($processParts + $entry) -join ';')
     }
 }
 
@@ -190,6 +221,7 @@ $BaseUrl = 'https://github.com/N-Silbernagel/fs-clip/releases'
 
 # convert $WatchDir to an absolute path
 $WatchDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($WatchDir)
+$InstallDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($InstallDir)
 
 $tempDir = ''
 do {
@@ -197,7 +229,7 @@ do {
 } while (Test-Path -Path $tempDir)
 New-Item -ItemType Directory -Path $tempDir | Out-Null
 
-Write-DebugVariable 'WatchDir', 'Tag', 'tempDir'
+Write-DebugVariable 'WatchDir', 'InstallDir', 'Tag', 'tempDir'
 
 $goOS = Get-GoOS
 $goArch = Get-GoArch
@@ -237,11 +269,15 @@ $binaryFilename = "fs-clip${binarySuffix}"
 $tempBinaryPath = Join-Path -Path $tempDir -ChildPath $binaryFilename
 Write-DebugVariable 'binaryFilename', 'tempBinaryPath'
 [System.IO.Directory]::CreateDirectory($WatchDir) | Out-Null
-$binary = Join-Path -Path $WatchDir -ChildPath $binaryFilename
+[System.IO.Directory]::CreateDirectory($InstallDir) | Out-Null
+$binary = Join-Path -Path $InstallDir -ChildPath $binaryFilename
 Write-DebugVariable 'binary'
 Move-Item -Path $tempBinaryPath -Destination $binary -Force
 Write-Information "installed ${binary}"
 
+Add-PathEntryIfMissing $InstallDir
+Write-Information "ensured $InstallDir is in user PATH"
+
 Invoke-CleanUp $tempDir
 
-& $binary
+& $binary --watch-dir $WatchDir
