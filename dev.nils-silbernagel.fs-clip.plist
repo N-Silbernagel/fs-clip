@@ -9,7 +9,7 @@
     <!-- What to run -->
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/fs-clip</string>
+        <string>{BINARY_PATH}</string>
         <string>--watch-dir</string>
         <string>{WATCH_DIR}</string>
     </array>
