@@ -159,7 +159,7 @@ function Confirm-Checksum ($target, $checksums) {
     }
 }
 
-function Expand-ChezmoiArchive ($path) {
+function Expand-Archive ($path) {
     $parent = Split-Path -Path $path -Parent
     Write-Debug "extracting ${path} to ${parent}"
     if ($path.EndsWith('.tar.gz')) {
@@ -231,7 +231,7 @@ Invoke-FileDownload "${BaseUrl}/download/${realTag}/${archiveFilename}" $tempArc
 $checksums = Get-Checksums $realTag $version
 Confirm-Checksum $tempArchivePath $checksums
 
-Expand-ChezmoiArchive $tempArchivePath
+Expand-Archive $tempArchivePath
 
 $binaryFilename = "fs-clip${binarySuffix}"
 $tempBinaryPath = Join-Path -Path $tempDir -ChildPath $binaryFilename
