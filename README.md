@@ -29,7 +29,7 @@ There is no installer for now. Download the archives from the releases tab and i
 
 Use 
 ```bash
-sh -c "$(curl -fsLS https://github.com/N-Silbernagel/fs-clip/releases/latest/download/install.sh) -- -w YOUR_DIRECTORY"
+sh -c "$(curl -fsLS https://github.com/N-Silbernagel/fs-clip/releases/latest/download/install.sh)" -- -w YOUR_DIRECTORY
 ``` 
 
 to configure a different directory to watch during installation (you can just reinstall fs-clip if it is already installed)
