@@ -10,7 +10,13 @@ permissions:
   packages: write
 
 jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+    permissions:
+      contents: read
+
   release-linux:
+    needs: test
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -38,6 +44,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   release-mac-windows:
+    needs: test
     runs-on: macos-15
     steps:
       - name: Checkout
