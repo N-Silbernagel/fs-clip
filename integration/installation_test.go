@@ -274,19 +274,6 @@ esac
 	}
 	if runtime.GOOS == "windows" {
 		t.Run("TaskSurvivesRejectedUpdate", func(t *testing.T) { assertWindowsTask(t, installed, watchdir) })
-		t.Run("RegisterWithoutStarting", func(t *testing.T) {
-			writeFile(t, checksums, []byte(digest+"  "+archiveName+"\n"), 0600)
-			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-			defer cancel()
-			script := windowsTaskIdentity + "$originalPath=[Environment]::GetEnvironmentVariable('Path','User'); try {\n" + fmt.Sprintf(
-				"& %s -InstallDir %s -WatchDir %s -ReleaseBaseUrl %s -NoStart\n",
-				psQuote(filepath.Join(repo, "scripts", "install.ps1")), psQuote(bindir), psQuote(watchdir), psQuote(server.URL)) +
-				"if ((Get-ScheduledTask -TaskName $taskName).State -ne 'Ready') { throw 'NoStart started the task' }; " +
-				"Start-ScheduledTask -TaskName $taskName\n" +
-				"} finally { [Environment]::SetEnvironmentVariable('Path',$originalPath,'User') }"
-			commandOutput(t, nil, powershellCommand(ctx, "$ErrorActionPreference='Stop'; "+script, env))
-			assertWindowsTask(t, installed, watchdir)
-		})
 	}
 
 	t.Run("InstalledClipboard", func(t *testing.T) { testClipboard(t, installed) })

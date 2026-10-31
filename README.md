@@ -46,14 +46,21 @@ To uninstall completely, also delete `%LOCALAPPDATA%\Programs\fs-clip` (or your 
 
 ## Configuration
 
-Use 
+To watch a different directory, pass it to the installer. Run the installer again to update an existing installation.
+
+### macOS / Linux
+
 ```bash
-sh -c "$(curl -fsLS https://github.com/N-Silbernagel/fs-clip/releases/latest/download/install.sh)" -- -w YOUR_DIRECTORY
-``` 
+sh -c "$(curl -fsLS https://github.com/N-Silbernagel/fs-clip/releases/latest/download/install.sh)" -- -w '/path/to/clipboard'
+```
 
-to configure a different directory to watch during installation (you can just reinstall fs-clip if it is already installed)
+### Windows
 
-On Windows, pass `-WatchDir 'YOUR_DIRECTORY'` to the PowerShell installation command. Use `-NoStart` to register the login task without starting it immediately.
+Run in PowerShell:
+
+```powershell
+& ([scriptblock]::Create((Invoke-RestMethod 'https://github.com/N-Silbernagel/fs-clip/releases/latest/download/install.ps1'))) -WatchDir 'C:\Users\YourName\Clipboard'
+```
 
 ## How It Works
 
@@ -114,7 +121,7 @@ explicit tags, repeat installs, custom paths, and invalid or missing checksums.
 They then run the clipboard suite against the installed executable. On macOS and
 Linux, service-manager commands are recorded and generated service files are checked.
 On Windows, tests register the real login task and verify its settings, repeat
-installs, deferred startup, and text and image clipboard access. Tests remove the
+installs, and text and image clipboard access. Tests remove the
 task afterward. These tests do not simulate a fresh login; macOS and Windows
 installer coverage is verified when their CI jobs pass.
 

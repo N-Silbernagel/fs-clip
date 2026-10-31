@@ -16,9 +16,6 @@ Specifies where fs-clip.exe is installed. "%LOCALAPPDATA%\\Programs\\fs-clip" is
 .PARAMETER Tag
 Specifies the version of fs-clip to install. "latest" is the default. Alias: t
 
-.PARAMETER NoStart
-Register the login task without starting it immediately.
-
 .PARAMETER ReleaseBaseUrl
 Release server URL. Defaults to the GitHub releases endpoint.
 
@@ -52,10 +49,7 @@ param (
     $EnableDebug,
 
     [string]
-    $ReleaseBaseUrl = 'https://github.com/N-Silbernagel/fs-clip/releases',
-
-    [switch]
-    $NoStart
+    $ReleaseBaseUrl = 'https://github.com/N-Silbernagel/fs-clip/releases'
 )
 
 function Write-DebugVariable {
@@ -327,10 +321,8 @@ try {
         -Principal $principal -Settings $settings -Force | Out-Null
     Write-Information "registered login task ${taskName}"
 
-    if (-not $NoStart) {
-        Start-ScheduledTask -TaskName $taskName
-        Write-Information 'started FSClip in the background'
-    }
+    Start-ScheduledTask -TaskName $taskName
+    Write-Information 'started FSClip in the background'
 
 } finally {
     Invoke-CleanUp $tempDir
