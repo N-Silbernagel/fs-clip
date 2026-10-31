@@ -25,28 +25,50 @@ func command(t *testing.T, input []byte, name string, args ...string) []byte {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, name, args...)
+	return commandOutput(t, input, cmd)
+}
+
+func commandOutput(t *testing.T, input []byte, cmd *exec.Cmd) []byte {
+	t.Helper()
 	cmd.Stdin = bytes.NewReader(input)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	output, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("%s %v: %v\n%s", name, args, err, stderr.String())
+		t.Fatalf("%v: %v\n%s", cmd.Args, err, stderr.String())
 	}
 	return output
 }
 
 func powershellArgs(script string) []string {
-	words := utf16.Encode([]rune(script))
+	words := utf16.Encode([]rune("$ProgressPreference='SilentlyContinue'; " + script))
 	data := make([]byte, len(words)*2)
 	for i, word := range words {
 		binary.LittleEndian.PutUint16(data[i*2:], word)
 	}
-	return []string{"-NoProfile", "-NonInteractive", "-STA", "-EncodedCommand", base64.StdEncoding.EncodeToString(data)}
+	return []string{"-NoProfile", "-NonInteractive", "-STA", "-OutputFormat", "Text", "-EncodedCommand", base64.StdEncoding.EncodeToString(data)}
+}
+
+func powershellCommand(ctx context.Context, script string, env []string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "powershell.exe", powershellArgs(script)...)
+	// Windows PowerShell must rebuild its module path when launched through Go
+	// from PowerShell 7. Inheriting PS7's path can hide built-in cmdlets.
+	cmd.Env = make([]string, 0, len(env))
+	for _, entry := range env {
+		key, _, _ := strings.Cut(entry, "=")
+		if !strings.EqualFold(key, "PSModulePath") {
+			cmd.Env = append(cmd.Env, entry)
+		}
+	}
+	return cmd
 }
 
 func powershell(t *testing.T, script string) []byte {
 	t.Helper()
-	return command(t, nil, "powershell.exe", powershellArgs("$ErrorActionPreference='Stop'; "+script)...)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := powershellCommand(ctx, "$ErrorActionPreference='Stop'; "+script, os.Environ())
+	return commandOutput(t, nil, cmd)
 }
 
 func psQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }

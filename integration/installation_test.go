@@ -150,11 +150,11 @@ esac
 				"$entries=[Environment]::GetEnvironmentVariable('Path','User') -split ';'; " +
 				"if (@($entries | Where-Object { $_ -eq " + psQuote(bindir) + " }).Count -ne 1) { throw 'PATH entry is missing or duplicated' }\n" +
 				"} finally { [Environment]::SetEnvironmentVariable('Path',$originalPath,'User') }"
-			cmd = exec.CommandContext(ctx, "powershell.exe", powershellArgs(driver)...)
+			cmd = powershellCommand(ctx, driver, env)
 		} else {
 			cmd = exec.CommandContext(ctx, "sh", filepath.Join(repo, "scripts", "install.sh"), "-b", bindir, "-w", watchdir, "-t", requestedTag)
+			cmd.Env = env
 		}
-		cmd.Env = env
 		output, err := cmd.CombinedOutput()
 		t.Logf("Installer output:\n%s", output)
 		if (err == nil) != success {
