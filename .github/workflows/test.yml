@@ -5,6 +5,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -14,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-14, windows-2025]
+        os: [ubuntu-24.04, macos-15, windows-2025]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
