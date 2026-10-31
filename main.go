@@ -1,10 +1,10 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
-	"github.com/fsnotify/fsnotify"
-	"golang.design/x/clipboard"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -12,6 +12,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/fsnotify/fsnotify"
+	"golang.design/x/clipboard"
 )
 
 func ensureDir(dirName string) error {
@@ -35,10 +38,10 @@ func ensureDir(dirName string) error {
 	return nil
 }
 
-func addFileToClipboard(filePath string, logger *slog.Logger) {
+func addFileToClipboard(filePath string, logger *slog.Logger) error {
 	fileContent, err := os.ReadFile(filePath)
 	if err != nil {
-		logger.Warn("Error reading file: " + err.Error())
+		return err
 	}
 
 	if len(fileContent) == 0 {
@@ -50,16 +53,16 @@ func addFileToClipboard(filePath string, logger *slog.Logger) {
 	if strings.HasPrefix(contentType, "text/") ||
 		contentType == "application/json" ||
 		contentType == "application/xml" {
-		clipboard.Write(clipboard.FmtText, fileContent)
-		return
+		_, err := clipboard.Write(context.Background(), clipboard.FmtText, fileContent)
+		return err
 	}
 
 	if strings.HasPrefix(contentType, "image/") {
-		clipboard.Write(clipboard.FmtImage, fileContent)
-		return
+		_, err := clipboard.Write(context.Background(), clipboard.FmtImage, fileContent)
+		return err
 	}
 
-	logger.Info("File " + filePath + " has unsupported content type: " + contentType)
+	return fmt.Errorf("unsupported content type: %s", contentType)
 }
 
 func main() {
@@ -164,7 +167,7 @@ func watchEvents(watcher *fsnotify.Watcher, logger *slog.Logger) {
 			if !ok {
 				return
 			}
-			logger.Error("File watcher error:", err)
+			logger.Error("File watcher error", "error", err)
 		}
 	}
 }
@@ -198,15 +201,20 @@ func handleFileCreateEvent(timerWait time.Duration, fileName string, logger *slo
 }
 
 func onWriteTimerEnd(fileName string, logger *slog.Logger, mu *sync.Mutex, timers map[string]*time.Timer) {
-	addFileToClipboard(fileName, logger)
+	defer func() {
+		mu.Lock()
+		delete(timers, fileName)
+		mu.Unlock()
+	}()
+
+	if err := addFileToClipboard(fileName, logger); err != nil {
+		logger.Warn("Unable to copy file to clipboard", "path", fileName, "error", err)
+		return
+	}
 
 	err := os.Remove(fileName)
 	if err != nil {
 		// fail silently, shouldn't interrupt the program
-		logger.Warn("error while removing file:", err)
+		logger.Warn("error while removing file", "error", err)
 	}
-
-	mu.Lock()
-	delete(timers, fileName)
-	mu.Unlock()
 }

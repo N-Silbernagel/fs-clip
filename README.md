@@ -40,7 +40,9 @@ At its core FSClip watches a directory for new files
 1. Detect new file
 2. Read file contents
 3. Write to system clipboard
-4. Delete the source file
+4. Delete the source file after a successful copy
+
+Files that cannot be read or copied, and files with unsupported content types, are kept in the watched directory.
 
 ## Roadmap
 * Cross-platform packaged binaries
@@ -48,6 +50,16 @@ At its core FSClip watches a directory for new files
 * Tests + CI badges
 * Release automation (GitHub Actions)
 * Add configuration for file deletion
+
+## Building from source
+
+Requires Go 1.27.3 or newer and a graphical desktop session for clipboard access.
+
+```bash
+go build .
+go test -race ./...
+go vet ./...
+```
 
 ## Contributing
 

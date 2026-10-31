@@ -1,15 +1,17 @@
 module nsilbernagel/fs-clip
 
-go 1.24.1
+go 1.27.3
 
 require (
-	github.com/fsnotify/fsnotify v1.9.0
-	golang.design/x/clipboard v0.7.1
+	github.com/fsnotify/fsnotify v1.10.1
+	golang.design/x/clipboard v0.11.0
 )
 
 require (
-	golang.org/x/exp/shiny v0.0.0-20250711185948-6ae5c78190dc // indirect
-	golang.org/x/image v0.29.0 // indirect
-	golang.org/x/mobile v0.0.0-20250711185624-d5bb5ecc55c0 // indirect
-	golang.org/x/sys v0.34.0 // indirect
+	github.com/ebitengine/purego v0.11.2 // indirect
+	golang.design/x/x11 v0.2.0 // indirect
+	golang.org/x/exp/shiny v0.0.0-20261014143641-f0251eb4aa3e // indirect
+	golang.org/x/image v0.47.0 // indirect
+	golang.org/x/mobile v0.0.0-20261011034528-197770444867 // indirect
+	golang.org/x/sys v0.49.0 // indirect
 )
