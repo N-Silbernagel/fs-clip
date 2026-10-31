@@ -53,21 +53,27 @@ $tasks=@(Get-ScheduledTask | Where-Object { $_.TaskPath -eq '\' -and $_.TaskName
 if ($tasks.Count -ne 1) { throw 'Missing or duplicated task' };
 [xml]$xml=Export-ScheduledTask -TaskName $taskName;
 $task=$xml.Task;
+$registered=$tasks[0];
 if ($task.Actions.Exec.Command -ne `+psQuote(binary)+`) { throw 'Incorrect executable' };
-if ((ConvertTo-UserSid $task.Principals.Principal.UserId) -ne $userId -or
-    $task.Principals.Principal.LogonType -ne 'InteractiveToken' -or
-    $task.Principals.Principal.RunLevel -ne 'LeastPrivilege') {
-    throw "Incorrect task principal (expected user SID $userId): $($task.Principals.Principal.OuterXml)";
+# The API exposes effective defaults that Export-ScheduledTask can omit from XML.
+$principal=$registered.Principal;
+if ((ConvertTo-UserSid $principal.UserId) -ne $userId -or
+    $principal.LogonType -ne 'Interactive' -or
+    $principal.RunLevel -ne 'Limited') {
+    throw "Incorrect task principal (expected user SID $userId): $($principal | Format-List * | Out-String)";
 };
 if ((ConvertTo-UserSid $task.Triggers.LogonTrigger.UserId) -ne $userId) {
     throw "Incorrect login trigger (expected user SID $userId): $($task.Triggers.LogonTrigger.OuterXml)";
 };
-if ($task.Settings.ExecutionTimeLimit -ne 'PT0S' -or
-    $task.Settings.MultipleInstancesPolicy -ne 'IgnoreNew' -or
-    $task.Settings.RestartOnFailure.Count -ne '3' -or
-    $task.Settings.RestartOnFailure.Interval -ne 'PT1M' -or
-    $task.Settings.DisallowStartIfOnBatteries -ne 'false' -or
-    $task.Settings.StopIfGoingOnBatteries -ne 'false') { throw 'Incorrect task lifecycle settings' };
+$settings=$registered.Settings;
+if ([System.Xml.XmlConvert]::ToTimeSpan($settings.ExecutionTimeLimit) -ne [TimeSpan]::Zero -or
+    $settings.MultipleInstances -ne 'IgnoreNew' -or
+    $settings.RestartCount -ne 3 -or
+    [System.Xml.XmlConvert]::ToTimeSpan($settings.RestartInterval) -ne [TimeSpan]::FromMinutes(1) -or
+    $settings.DisallowStartIfOnBatteries -or
+    $settings.StopIfGoingOnBatteries) {
+    throw "Incorrect task lifecycle settings: $($settings | Format-List * | Out-String)";
+};
 if ($tasks[0].State -ne 'Running') { throw 'Task was not started' };
 `)
 	text := "Scheduled task clipboard — Grüße, 世界!"
