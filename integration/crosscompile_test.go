@@ -28,7 +28,7 @@ func TestCrossCompileReleaseTargets(t *testing.T) {
 			cmd.Dir = ".."
 			cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS="+target.os, "GOARCH="+target.arch)
 			if output, err := cmd.CombinedOutput(); err != nil {
-				t.Fatalf("CGO-free build failed: %v\n%s", err, output)
+				t.Fatalf("Release target build failed: %v\n%s", err, output)
 			}
 			info, err := buildinfo.ReadFile(binary)
 			if err != nil {

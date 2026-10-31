@@ -46,7 +46,6 @@ Files that cannot be read or copied, and files with unsupported content types, a
 
 ## Roadmap
 * Evaluate GoReleaser's free Homebrew cask, Scoop, and `.deb`/`.rpm` support, including service setup and uninstall cleanup.
-* Consolidate GoReleaser publishing into one build job after native CI confirms the CGO-free binaries work on Linux, macOS, and Windows. Keep native integration tests on all three platforms.
 * Ignore patterns (e.g. .DS_Store)
 * Tests + CI badges
 * Release automation (GitHub Actions)
@@ -57,19 +56,23 @@ Files that cannot be read or copied, and files with unsupported content types, a
 Requires Go 1.27.3 or newer and a graphical desktop session for clipboard access.
 
 ```bash
-CGO_ENABLED=0 go build .
+make build
 go test -race ./...
 go vet ./...
 ```
 
-Release binaries and `make build` use `CGO_ENABLED=0` and require no C compiler.
-Race-enabled tests still require CGO and a C compiler.
+Race-enabled tests require a C compiler.
+
+Releases wait for the shared test workflow, then one Ubuntu job runs GoReleaser
+to build and publish all five release targets. Archives retain their platform-specific
+service files and share one checksum manifest.
 
 ## Clipboard integration tests
 
-GitHub Actions cross-compiles all five release targets without CGO and runs unit
+GitHub Actions cross-compiles all five release targets, checks
+GoReleaser packaging in snapshot mode without publishing, and runs unit
 tests, static checks, and clipboard integration tests on Ubuntu, macOS, and
-Windows. Installer tests build a CGO-free application and verify its build metadata.
+Windows. Installer tests build the application and verify its release build settings.
 The test harness retains race detection. Each integration job first checks native clipboard
 write/read access, then starts the built application and verifies:
 

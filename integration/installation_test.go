@@ -83,7 +83,7 @@ func TestInstallation(t *testing.T) {
 		}
 	}
 	if !cgoDisabled {
-		t.Fatal("Installer tests require a CGO-free application binary")
+		t.Fatal("Application binary does not match release build settings")
 	}
 	original := readFile(t, binary)
 	home := filepath.Join(root, "home with spaces")
@@ -96,14 +96,13 @@ func TestInstallation(t *testing.T) {
 	downloads := filepath.Join(web, "download", tag)
 	requireSuccess(t, os.MkdirAll(downloads, 0755))
 	requireSuccess(t, os.MkdirAll(home, 0755))
-	extension, service, checksumSuffix := "tar.gz", label+".service", ""
+	extension, service := "tar.gz", label+".service"
 	switch runtime.GOOS {
 	case "windows":
 		extension = "zip"
 	case "darwin":
 		service = label + ".plist"
 	case "linux":
-		checksumSuffix = "_linux"
 	default:
 		t.Fatalf("Unsupported test platform: %s", runtime.GOOS)
 	}
@@ -111,7 +110,7 @@ func TestInstallation(t *testing.T) {
 	archive := releaseArchive(t, binary, filepath.Join(repo, service))
 	writeFile(t, filepath.Join(downloads, archiveName), archive, 0600)
 	digest := fmt.Sprintf("%x", sha256.Sum256(archive))
-	checksums := filepath.Join(downloads, fmt.Sprintf("fs-clip_%s_checksums%s.txt", version, checksumSuffix))
+	checksums := filepath.Join(downloads, fmt.Sprintf("fs-clip_%s_checksums.txt", version))
 	writeFile(t, checksums, []byte(digest+"  "+archiveName+"\n"), 0600)
 	files := http.FileServer(http.Dir(web))
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -17,16 +17,23 @@ permissions:
 
 jobs:
   cross-compile:
-    name: CGO-free cross-compilation
+    name: Cross-platform builds and packaging
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - name: Build every release target without CGO
+      - name: Build every release target
         run: go test -tags=crosscompile -v -timeout=5m ./integration
+      - name: Verify release packaging without publishing
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          version: '~> v2'
+          args: release --snapshot --clean --skip=publish
 
   test:
     name: Clipboard (${{ matrix.os }})

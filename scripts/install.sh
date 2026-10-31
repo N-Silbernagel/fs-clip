@@ -68,13 +68,12 @@ main() {
   http_download "${tmpdir}/${TARBALL}" "${TARBALL_URL}" || exit 1
 
   # download checksums
-  CHECKSUMS="fs-clip_${VERSION}_checksums"
-  if [ "${GOOS}" = "linux" ]; then
-      CHECKSUMS="${CHECKSUMS}_linux"
-  fi
-  CHECKSUMS="${CHECKSUMS}.txt"
+  CHECKSUMS="fs-clip_${VERSION}_checksums.txt"
   CHECKSUMS_URL="${RELEASE_BASE_URL}/download/${TAG}/${CHECKSUMS}"
-  http_download "${tmpdir}/${CHECKSUMS}" "${CHECKSUMS_URL}" || exit 1
+  if ! http_download "${tmpdir}/${CHECKSUMS}" "${CHECKSUMS_URL}"; then
+    log_err "unable to download checksum manifest ${CHECKSUMS}"
+    exit 1
+  fi
 
   # verify checksums
   hash_sha256_verify "${tmpdir}/${TARBALL}" "${tmpdir}/${CHECKSUMS}"
