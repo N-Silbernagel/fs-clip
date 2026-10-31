@@ -42,6 +42,7 @@ jobs:
           args: release --clean --config=.goreleaser.linux.yaml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
 
   release-mac-windows:
     needs: test
@@ -62,3 +63,4 @@ jobs:
           args: release --clean --config=.goreleaser.yaml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
