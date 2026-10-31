@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 func startApplication(t *testing.T, binary, watched string) string {
@@ -78,16 +77,16 @@ func testClipboard(t *testing.T, binary string) {
 		file, err := os.Create(path)
 		requireSuccess(t, err)
 		defer file.Close()
+		// File writes are unbuffered. Syncs and sleeps can exceed the idle cutoff;
+		// timer resets are covered separately with testing/synctest.
 		for i := 0; i < 15; i++ {
 			chunk := fmt.Sprintf("chunk %d: complete clipboard content\n", i)
 			_, err := file.WriteString(chunk)
 			requireSuccess(t, err)
-			requireSuccess(t, file.Sync())
 			chunked.WriteString(chunk)
 			if _, err := os.Stat(path); err != nil {
 				t.Fatalf("Source disappeared before writing finished: %v", err)
 			}
-			time.Sleep(20 * time.Millisecond)
 		}
 		requireSuccess(t, file.Close())
 		copied(t, path, chunked.String())

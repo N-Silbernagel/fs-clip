@@ -68,13 +68,19 @@ Ubuntu, macOS, and Windows. Each integration job first checks native clipboard
 write/read access, then starts the built application and verifies:
 
 - Unicode text is copied completely and its source is removed.
-- A file written in chunks remains present during writing and is copied completely.
+- Complete contents of a file written in chunks reach the clipboard.
 - Unsupported files retain their contents and leave the clipboard unchanged.
 - PNG images retain their dimensions and pixels on the clipboard.
 - A subsequent file at a previously used path replaces the clipboard contents.
 
 Clipboard access failures fail the job rather than skipping the tests. Image
 assertions use Go's PNG decoder to compare pixels read through native clipboard tools.
+
+Unit tests verify the debounce timer with Go's deterministic test clock. FSClip
+currently infers readiness from 100 ms without write events; a producer that pauses
+longer can be processed before it finishes. To publish a completed file explicitly,
+write it outside the watched directory and then move it into that directory on
+the same filesystem.
 
 The same jobs exercise the installers against a local release server: latest and
 explicit tags, repeat installs, custom paths, and invalid or missing checksums.
