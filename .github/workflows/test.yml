@@ -36,17 +36,20 @@ jobs:
           args: release --snapshot --clean --skip=publish
 
   test:
-    name: Clipboard (${{ matrix.os }} / ${{ matrix.arch }})
+    name: ${{ matrix.platform }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-24.04
             arch: amd64
+            platform: Linux
           - os: macos-15
             arch: arm64
+            platform: macOS
           - os: windows-2025
             arch: amd64
+            platform: Windows
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
