@@ -16,14 +16,23 @@ Some tools can only emit output as files. If your next step is to paste that out
 * Minimal footprint – Single small executable
 
 ## Installation
-### Mac
+### macOS / Linux
 
 ```bash
 sh -c "$(curl -fsLS https://github.com/N-Silbernagel/fs-clip/releases/latest/download/install.sh)"
 ```
 
-### Linux/Windows
-There is no installer for now. Download the archives from the releases tab and install the binary your preferred way.
+On Linux, the installer sets up a systemd user service. Requires a graphical desktop session.
+
+### Windows
+
+Run in PowerShell:
+
+```powershell
+& ([scriptblock]::Create((Invoke-RestMethod 'https://github.com/N-Silbernagel/fs-clip/releases/latest/download/install.ps1')))
+```
+
+The installer adds FSClip to your user PATH and starts it in the foreground.
 
 ## Configuration
 
@@ -46,10 +55,7 @@ Files that cannot be read or copied, and files with unsupported content types, a
 
 ## Roadmap
 * Evaluate GoReleaser's free Homebrew cask, Scoop, and `.deb`/`.rpm` support, including service setup and uninstall cleanup.
-* Ignore patterns (e.g. .DS_Store)
 * Tests + CI badges
-* Release automation (GitHub Actions)
-* Add configuration for file deletion
 
 ## Building from source
 
