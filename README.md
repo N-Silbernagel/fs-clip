@@ -61,6 +61,15 @@ go test -race ./...
 go vet ./...
 ```
 
+## Clipboard integration tests
+
+GitHub Actions runs unit tests, static checks, and clipboard integration tests on
+Ubuntu, macOS, and Windows. Each integration job first checks native clipboard
+write/read access, then starts the built application and writes a file in chunks.
+It verifies that the source remains present during writing, the complete text
+reaches the clipboard, and the source is removed afterward. Clipboard access
+failures fail the job rather than skipping the tests.
+
 ## Contributing
 
 PRs, issues, and discussions welcome!

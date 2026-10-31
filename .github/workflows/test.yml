@@ -1,0 +1,48 @@
+name: Test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Clipboard (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+      - name: Install X11 test environment
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xauth xclip libx11-dev
+      - name: Unit tests and static checks
+        run: |
+          go test -race ./...
+          go vet ./...
+      - name: Build application
+        shell: bash
+        run: go build -race -o integration-bin/fs-clip${{ runner.os == 'Windows' && '.exe' || '' }} .
+      - name: Linux clipboard integration
+        if: runner.os == 'Linux'
+        run: env -u WAYLAND_DISPLAY xvfb-run -a python scripts/test-integration.py ./integration-bin/fs-clip
+      - name: macOS clipboard integration
+        if: runner.os == 'macOS'
+        run: python scripts/test-integration.py ./integration-bin/fs-clip
+      - name: Windows clipboard integration
+        if: runner.os == 'Windows'
+        run: python scripts/test-integration.py ./integration-bin/fs-clip.exe

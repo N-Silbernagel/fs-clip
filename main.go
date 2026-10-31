@@ -109,6 +109,8 @@ func main() {
 		panic(err)
 	}
 
+	logger.Debug("Watching directory", "path", watchPath)
+
 	// Block main goroutine forever.
 	<-make(chan struct{})
 }
