@@ -61,7 +61,8 @@ checksum:
   name_template: '{{ .ProjectName }}_{{ .Version }}_checksums.txt'
 
 release:
-  make_latest: false
+  prerelease: auto
+  make_latest: true
   extra_files:
     - glob: ./scripts/install.sh
     - glob: ./scripts/install.ps1
