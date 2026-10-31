@@ -24,3 +24,17 @@ func TestWindowsPowerShellModuleDiscovery(t *testing.T) {
 		t.Fatalf("Unexpected checksum from Windows PowerShell: %q", output)
 	}
 }
+
+func TestWindowsUserIdentity(t *testing.T) {
+	powershell(t, windowsUserSID+`
+$current=[Security.Principal.WindowsIdentity]::GetCurrent();
+foreach ($identity in @($current.User.Value, $current.Name)) {
+    if ((ConvertTo-UserSid $identity) -ne $current.User.Value) {
+        throw "Account identity did not resolve to the current user: $identity";
+    }
+};
+$otherSid='S-1-1-0';
+if ((ConvertTo-UserSid $otherSid) -eq $current.User.Value) {
+    throw 'A different user was accepted as the current user';
+}`)
+}

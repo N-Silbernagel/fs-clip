@@ -17,6 +17,14 @@ const windowsTaskIdentity = `$userId=[Security.Principal.WindowsIdentity]::GetCu
 $taskName='dev.nils-silbernagel.fs-clip-' + $userId;
 `
 
+const windowsUserSID = `function ConvertTo-UserSid([string]$identity) {
+    if ($identity -match '^S-\d-') {
+        return ([Security.Principal.SecurityIdentifier]::new($identity)).Value;
+    }
+    return ([Security.Principal.NTAccount]::new($identity)).Translate([Security.Principal.SecurityIdentifier]).Value;
+}
+`
+
 func prepareWindowsTask(t *testing.T) {
 	t.Helper()
 	powershell(t, windowsTaskIdentity+`
@@ -35,7 +43,7 @@ if ($task) {
 
 func assertWindowsTask(t *testing.T, binary, watched string) {
 	t.Helper()
-	powershell(t, windowsTaskIdentity+`
+	powershell(t, windowsTaskIdentity+windowsUserSID+`
 $deadline=[DateTime]::UtcNow.AddSeconds(5);
 while ((Get-ScheduledTask -TaskName $taskName).State -ne 'Running') {
     if ([DateTime]::UtcNow -ge $deadline) { throw 'Task was not started' };
@@ -46,10 +54,14 @@ if ($tasks.Count -ne 1) { throw 'Missing or duplicated task' };
 [xml]$xml=Export-ScheduledTask -TaskName $taskName;
 $task=$xml.Task;
 if ($task.Actions.Exec.Command -ne `+psQuote(binary)+`) { throw 'Incorrect executable' };
-if ($task.Principals.Principal.UserId -ne $userId -or
+if ((ConvertTo-UserSid $task.Principals.Principal.UserId) -ne $userId -or
     $task.Principals.Principal.LogonType -ne 'InteractiveToken' -or
-    $task.Principals.Principal.RunLevel -ne 'LeastPrivilege') { throw 'Incorrect task principal' };
-if ($task.Triggers.LogonTrigger.UserId -ne $userId) { throw 'Incorrect login trigger' };
+    $task.Principals.Principal.RunLevel -ne 'LeastPrivilege') {
+    throw "Incorrect task principal (expected user SID $userId): $($task.Principals.Principal.OuterXml)";
+};
+if ((ConvertTo-UserSid $task.Triggers.LogonTrigger.UserId) -ne $userId) {
+    throw "Incorrect login trigger (expected user SID $userId): $($task.Triggers.LogonTrigger.OuterXml)";
+};
 if ($task.Settings.ExecutionTimeLimit -ne 'PT0S' -or
     $task.Settings.MultipleInstancesPolicy -ne 'IgnoreNew' -or
     $task.Settings.RestartOnFailure.Count -ne '3' -or
