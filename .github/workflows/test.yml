@@ -36,11 +36,17 @@ jobs:
           args: release --snapshot --clean --skip=publish
 
   test:
-    name: Clipboard (${{ matrix.os }})
+    name: Clipboard (${{ matrix.os }} / ${{ matrix.arch }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15, windows-2025]
+        include:
+          - os: ubuntu-24.04
+            arch: amd64
+          - os: macos-15
+            arch: arm64
+          - os: windows-2025
+            arch: amd64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
@@ -48,6 +54,9 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      - name: Verify runtime architecture
+        shell: bash
+        run: test "$(go env GOHOSTARCH)" = "${{ matrix.arch }}"
       - name: Install X11 test environment
         if: runner.os == 'Linux'
         run: |

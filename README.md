@@ -82,15 +82,15 @@ go vet ./...
 Race-enabled tests require a C compiler.
 
 Releases wait for the shared test workflow, then one Ubuntu job runs GoReleaser
-to build and publish all five release targets. Archives retain their platform-specific
+to build and publish all six release targets. Archives retain their platform-specific
 service files and share one checksum manifest.
 
 ## Clipboard integration tests
 
-GitHub Actions cross-compiles all five release targets, checks
+GitHub Actions cross-compiles all six release targets, checks
 GoReleaser packaging in snapshot mode without publishing, and runs unit
-tests, static checks, and clipboard integration tests on Ubuntu, macOS, and
-Windows. Installer tests build the application and verify its release build settings.
+tests, static checks, and clipboard integration tests on Linux AMD64, macOS ARM64,
+and Windows AMD64. Installer tests build the application and verify its release build settings.
 The test harness retains race detection. Each integration job first checks native clipboard
 write/read access, then starts the built application and verifies:
 
