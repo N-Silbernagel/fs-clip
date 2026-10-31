@@ -79,11 +79,11 @@ write/read access, then starts the built application and verifies:
 - Unicode text is copied completely and its source is removed.
 - Complete contents of a file written in chunks reach the clipboard.
 - Unsupported files retain their contents and leave the clipboard unchanged.
-- PNG, JPEG, GIF, and WebP images become valid PNG clipboard data with matching dimensions and decoded pixels.
+- PNG, JPEG, GIF, and WebP images become valid PNG clipboard data with matching dimensions.
 - A subsequent file at a previously used path replaces the clipboard contents.
 
 Clipboard access failures fail the job rather than skipping the tests. Image
-assertions use Go's PNG decoder to compare pixels read through native clipboard tools.
+assertions use Go's PNG decoder to validate image data read through native clipboard tools.
 
 Unit tests verify the debounce timer with Go's deterministic test clock. FSClip
 currently infers readiness from 100 ms without write events; a producer that pauses

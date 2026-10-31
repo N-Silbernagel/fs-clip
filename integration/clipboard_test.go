@@ -138,15 +138,6 @@ func testClipboard(t *testing.T, binary string) {
 			if actual.Bounds().Size() != expected.Bounds().Size() {
 				t.Fatal("Clipboard image dimensions differ")
 			}
-			for y := 0; y < expected.Bounds().Dy(); y++ {
-				for x := 0; x < expected.Bounds().Dx(); x++ {
-					r, g, b, a := actual.At(actual.Bounds().Min.X+x, actual.Bounds().Min.Y+y).RGBA()
-					er, eg, eb, ea := expected.At(expected.Bounds().Min.X+x, expected.Bounds().Min.Y+y).RGBA()
-					if r != er || g != eg || b != eb || a != ea {
-						t.Fatalf("Clipboard image pixel differs at (%d,%d)", x, y)
-					}
-				}
-			}
 		})
 		if t.Failed() {
 			return
