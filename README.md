@@ -65,10 +65,16 @@ go vet ./...
 
 GitHub Actions runs unit tests, static checks, and clipboard integration tests on
 Ubuntu, macOS, and Windows. Each integration job first checks native clipboard
-write/read access, then starts the built application and writes a file in chunks.
-It verifies that the source remains present during writing, the complete text
-reaches the clipboard, and the source is removed afterward. Clipboard access
-failures fail the job rather than skipping the tests.
+write/read access, then starts the built application and verifies:
+
+- Unicode text is copied completely and its source is removed.
+- A file written in chunks remains present during writing and is copied completely.
+- Unsupported files retain their contents and leave the clipboard unchanged.
+- PNG images retain their dimensions and pixels on the clipboard.
+- A subsequent file at a previously used path replaces the clipboard contents.
+
+Clipboard access failures fail the job rather than skipping the tests. Image
+assertions use Pillow to compare pixels read through native clipboard tools.
 
 ## Contributing
 
