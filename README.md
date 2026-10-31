@@ -45,7 +45,8 @@ At its core FSClip watches a directory for new files
 Files that cannot be read or copied, and files with unsupported content types, are kept in the watched directory.
 
 ## Roadmap
-* Cross-platform packaged binaries
+* Evaluate GoReleaser's free Homebrew cask, Scoop, and `.deb`/`.rpm` support, including service setup and uninstall cleanup.
+* Consolidate GoReleaser publishing into one build job after native CI confirms the CGO-free binaries work on Linux, macOS, and Windows. Keep native integration tests on all three platforms.
 * Ignore patterns (e.g. .DS_Store)
 * Tests + CI badges
 * Release automation (GitHub Actions)
@@ -56,15 +57,20 @@ Files that cannot be read or copied, and files with unsupported content types, a
 Requires Go 1.27.3 or newer and a graphical desktop session for clipboard access.
 
 ```bash
-go build .
+CGO_ENABLED=0 go build .
 go test -race ./...
 go vet ./...
 ```
 
+Release binaries and `make build` use `CGO_ENABLED=0` and require no C compiler.
+Race-enabled tests still require CGO and a C compiler.
+
 ## Clipboard integration tests
 
-GitHub Actions runs unit tests, static checks, and clipboard integration tests on
-Ubuntu, macOS, and Windows. Each integration job first checks native clipboard
+GitHub Actions cross-compiles all five release targets without CGO and runs unit
+tests, static checks, and clipboard integration tests on Ubuntu, macOS, and
+Windows. Installer tests build a CGO-free application and verify its build metadata.
+The test harness retains race detection. Each integration job first checks native clipboard
 write/read access, then starts the built application and verifies:
 
 - Unicode text is copied completely and its source is removed.

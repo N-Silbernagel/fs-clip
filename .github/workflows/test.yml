@@ -16,6 +16,18 @@ permissions:
   contents: read
 
 jobs:
+  cross-compile:
+    name: CGO-free cross-compilation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build every release target without CGO
+        run: go test -tags=crosscompile -v -timeout=5m ./integration
+
   test:
     name: Clipboard (${{ matrix.os }})
     strategy:
@@ -33,7 +45,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb xauth xclip libx11-dev
+          sudo apt-get install -y xvfb xauth xclip
       - name: Unit tests and static checks
         run: |
           go test -race ./...

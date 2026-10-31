@@ -9,6 +9,7 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
+	"debug/buildinfo"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -66,11 +67,23 @@ func TestInstallation(t *testing.T) {
 	binary := filepath.Join(root, binaryName)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	build := exec.CommandContext(ctx, "go", "build", "-race", "-o", binary, ".")
+	build := exec.CommandContext(ctx, "go", "build", "-o", binary, ".")
+	build.Env = append(os.Environ(), "CGO_ENABLED=0")
 	build.Dir = repo
 	output, err := build.CombinedOutput()
 	if err != nil {
 		t.Fatalf("Build application: %v\n%s", err, output)
+	}
+	info, err := buildinfo.ReadFile(binary)
+	requireSuccess(t, err)
+	cgoDisabled := false
+	for _, setting := range info.Settings {
+		if setting.Key == "CGO_ENABLED" {
+			cgoDisabled = setting.Value == "0"
+		}
+	}
+	if !cgoDisabled {
+		t.Fatal("Installer tests require a CGO-free application binary")
 	}
 	original := readFile(t, binary)
 	home := filepath.Join(root, "home with spaces")
