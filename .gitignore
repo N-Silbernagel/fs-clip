@@ -4,5 +4,3 @@ fs-clip
 
 # Added by goreleaser init:
 dist/
-
-integration-bin/

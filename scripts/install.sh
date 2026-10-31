@@ -11,6 +11,7 @@ BINDIR=""
 TAGARG=latest
 LOG_LEVEL=2
 WATCH_DIR=""
+RELEASE_BASE_URL="${FS_CLIP_RELEASE_BASE_URL:-https://github.com/N-Silbernagel/fs-clip/releases}"
 
 tmpdir="$(mktemp -d)"
 trap 'rm -rf -- "${tmpdir}"' EXIT
@@ -42,6 +43,10 @@ main() {
     BINDIR="${HOME}/.local/bin"
   fi
 
+  if [ -z "${WATCH_DIR}" ]; then
+    WATCH_DIR="${HOME}/copy-to-clipboard"
+  fi
+
   TAG="$(real_tag "${TAGARG}")"
   VERSION="${TAG#v}"
 
@@ -59,7 +64,7 @@ main() {
   # download tarball
   NAME="fs-clip_${VERSION}_${GOOS}${GOOS_EXTRA}_${arch}"
   TARBALL="${NAME}.${FORMAT}"
-  TARBALL_URL="https://github.com/N-Silbernagel/fs-clip/releases/download/${VERSION}/${TARBALL}"
+  TARBALL_URL="${RELEASE_BASE_URL}/download/${TAG}/${TARBALL}"
   http_download "${tmpdir}/${TARBALL}" "${TARBALL_URL}" || exit 1
 
   # download checksums
@@ -68,7 +73,7 @@ main() {
       CHECKSUMS="${CHECKSUMS}_linux"
   fi
   CHECKSUMS="${CHECKSUMS}.txt"
-  CHECKSUMS_URL="https://github.com/N-Silbernagel/fs-clip/releases/download/${VERSION}/${CHECKSUMS}"
+  CHECKSUMS_URL="${RELEASE_BASE_URL}/download/${TAG}/${CHECKSUMS}"
   http_download "${tmpdir}/${CHECKSUMS}" "${CHECKSUMS_URL}" || exit 1
 
   # verify checksums
@@ -78,12 +83,13 @@ main() {
 
   # install binary
   echo "Copying fs-clip to ${BINDIR}"
-  if mkdir -p "${BINDIR}" 2>/dev/null && install -m 0755 "${tmpdir}/fs-clip" "${BINDIR}/fs-clip" 2>/dev/null; then
+  if mkdir -p "${BINDIR}" 2>/dev/null && install -m 0755 "${tmpdir}/fs-clip" "${BINDIR}/.fs-clip-$$" 2>/dev/null && mv -f "${BINDIR}/.fs-clip-$$" "${BINDIR}/fs-clip" 2>/dev/null; then
     :
   elif is_command sudo; then
     log_info "installing to ${BINDIR} requires elevated permissions"
     sudo mkdir -p "${BINDIR}"
-    sudo install -m 0755 "${tmpdir}/fs-clip" "${BINDIR}/fs-clip"
+    sudo install -m 0755 "${tmpdir}/fs-clip" "${BINDIR}/.fs-clip-$$"
+    sudo mv -f "${BINDIR}/.fs-clip-$$" "${BINDIR}/fs-clip"
   else
     log_err "unable to install to ${BINDIR}; choose a writable path with -b"
     return 1
@@ -99,9 +105,19 @@ main() {
   fi
 }
 
-install_linux() {
-  # TODO test on linux
+escape_sed() {
+  printf '%s' "${1}" | sed 's/[\\&|]/\\&/g'
+}
 
+escape_xml() {
+  printf '%s' "${1}" | sed 's/\&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'
+}
+
+escape_systemd() {
+  printf '%s' "${1}" | sed 's/[\\"]/\\&/g; s/%/%%/g'
+}
+
+install_linux() {
   SYSTEMD_DEFINITIONS="${HOME}/.config/systemd/user"
   COMMAND_LABEL="dev.nils-silbernagel.fs-clip"
   SERVICE="${COMMAND_LABEL}.service"
@@ -109,19 +125,20 @@ install_linux() {
   echo "Copying service to ${SYSTEMD_DEFINITIONS}"
   # TODO make logging configurable in linux
   mkdir -p "${SYSTEMD_DEFINITIONS}"
-  sed "s|{WATCH_DIR}|${WATCH_DIR}|g" "${tmpdir}/${SERVICE}" \
-    | sed "s|{BINARY_PATH}|${BINDIR}/fs-clip|g" \
+  sed "s|{WATCH_DIR}|$(escape_sed "$(escape_systemd "${WATCH_DIR}")")|g" "${tmpdir}/${SERVICE}" \
+    | sed "s|{BINARY_PATH}|$(escape_sed "$(escape_systemd "${BINDIR}/fs-clip")")|g" \
     > "${SYSTEMD_DEFINITIONS}/${SERVICE}"
   chmod 0644 "${SYSTEMD_DEFINITIONS}/${SERVICE}"
 
   echo "Unloading systemd service"
-  if systemctl cat ${COMMAND_LABEL}; then \
+  if systemctl --user cat "${SERVICE}"; then \
       echo "Unloading current instance of ${SERVICE}"; \
-      systemctl disable --now "${SERVICE}"; \
+      systemctl --user disable --now "${SERVICE}"; \
   fi
 
   echo "Loading systemd service"
-  systemctl enable --now "${SERVICE}"
+  systemctl --user daemon-reload
+  systemctl --user enable --now "${SERVICE}"
 }
 
 install_mac() {
@@ -133,9 +150,9 @@ install_mac() {
   mkdir -p "${LAUNCHAGENTS}" "${LOGDIR}"
 
   echo "Copying plist to ${LAUNCHAGENTS}"
-  sed "s|{USER_HOME}|${HOME}|g" "${tmpdir}/${PLIST}" \
-    | sed "s|{WATCH_DIR}|${WATCH_DIR}|g" \
-    | sed "s|{BINARY_PATH}|${BINDIR}/fs-clip|g" \
+  sed "s|{USER_HOME}|$(escape_sed "$(escape_xml "${HOME}")")|g" "${tmpdir}/${PLIST}" \
+    | sed "s|{WATCH_DIR}|$(escape_sed "$(escape_xml "${WATCH_DIR}")")|g" \
+    | sed "s|{BINARY_PATH}|$(escape_sed "$(escape_xml "${BINDIR}/fs-clip")")|g" \
     > "${LAUNCHAGENTS}/${PLIST}"
   chmod 0644 "${LAUNCHAGENTS}/${PLIST}"
 
@@ -200,7 +217,6 @@ check_goos_goarch() {
   darwin/arm64) return 0 ;;
   linux/amd64) return 0 ;;
   linux/arm64) return 0 ;;
-  windows/amd64) return 0 ;;
   *)
     printf '%s: unsupported platform\n' "${1}" 1>&2
     return 1
@@ -211,13 +227,13 @@ check_goos_goarch() {
 real_tag() {
   tag="${1}"
   log_debug "checking GitHub for tag ${tag}"
-  release_url="https://github.com/N-Silbernagel/fs-clip/releases/${tag}"
+  release_url="${RELEASE_BASE_URL}/${tag}"
   json="$(http_get "${release_url}" "Accept: application/json")"
   if [ -z "${json}" ]; then
     log_err "real_tag error retrieving GitHub release ${tag}"
     return 1
   fi
-  real_tag="$(printf '%s\n' "${json}" | tr -s '\n' ' ' | sed 's/.*"tag_name":"//' | sed 's/".*//')"
+  real_tag="$(printf '%s\n' "${json}" | tr -s '\n' ' ' | sed 's/.*"tag_name"[[:space:]]*:[[:space:]]*"//' | sed 's/".*//')"
   if [ -z "${real_tag}" ]; then
     log_err "real_tag error determining real tag of GitHub release ${tag}"
     return 1
@@ -290,7 +306,7 @@ hash_sha256() {
     printf '%s' "${hash}" | cut -d ' ' -f 1
   elif is_command openssl; then
     hash="$(openssl dgst -sha256 "${target}")" || return 1
-    printf '%s' "${hash}" | cut -d ' ' -f a
+    printf '%s' "${hash}" | sed 's/.*= //'
   else
     log_crit "hash_sha256 unable to find command to compute SHA256 hash"
     return 1
@@ -302,7 +318,7 @@ hash_sha256_verify() {
   checksums="${2}"
   basename="${target##*/}"
 
-  want="$(grep "${basename}" "${checksums}" 2>/dev/null | tr '\t' ' ' | cut -d ' ' -f 1)"
+  want="$(awk -v name="${basename}" '$2 == name {print $1}' "${checksums}" 2>/dev/null)"
   if [ -z "${want}" ]; then
     log_err "hash_sha256_verify unable to find checksum for ${target} in ${checksums}"
     return 1

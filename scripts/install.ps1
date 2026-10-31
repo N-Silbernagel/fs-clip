@@ -16,6 +16,12 @@ Specifies where fs-clip.exe is installed. "%LOCALAPPDATA%\\Programs\\fs-clip" is
 .PARAMETER Tag
 Specifies the version of fs-clip to install. "latest" is the default. Alias: t
 
+.PARAMETER NoStart
+Install without starting fs-clip in the foreground.
+
+.PARAMETER ReleaseBaseUrl
+Release server URL. Defaults to the GitHub releases endpoint.
+
 .PARAMETER EnableDebug
 If specified, print debug output. Alias: d
 
@@ -33,7 +39,7 @@ param (
     [Parameter(Mandatory = $false)]
     [Alias('i')]
     [string]
-    $InstallDir = (if ($env:LOCALAPPDATA) { Join-Path -Path $env:LOCALAPPDATA -ChildPath 'Programs\fs-clip' } else { Join-Path -Path $HOME -ChildPath '.local/bin/fs-clip' }),
+    $InstallDir = $(if ($env:LOCALAPPDATA) { Join-Path -Path $env:LOCALAPPDATA -ChildPath 'Programs\fs-clip' } else { Join-Path -Path $HOME -ChildPath '.local/bin/fs-clip' }),
 
     [Parameter(Mandatory = $false)]
     [Alias('t')]
@@ -43,7 +49,13 @@ param (
     [Parameter(Mandatory = $false)]
     [Alias('d')]
     [switch]
-    $EnableDebug
+    $EnableDebug,
+
+    [string]
+    $ReleaseBaseUrl = 'https://github.com/N-Silbernagel/fs-clip/releases',
+
+    [switch]
+    $NoStart
 )
 
 function Write-DebugVariable {
@@ -69,13 +81,11 @@ function Add-PathEntryIfMissing ([string]$entry) {
     if ($userPath) {
         $parts = $userPath -split ';' | Where-Object { $_ }
     }
-    if ($parts -contains $entry) {
-        return
+    if (-not ($parts -contains $entry)) {
+        $newParts = @($parts + $entry)
+        $newUserPath = ($newParts -join ';')
+        [System.Environment]::SetEnvironmentVariable('Path', $newUserPath, 'User')
     }
-
-    $newParts = @($parts + $entry)
-    $newUserPath = ($newParts -join ';')
-    [System.Environment]::SetEnvironmentVariable('Path', $newUserPath, 'User')
 
     $processParts = @()
     if ($env:Path) {
@@ -212,72 +222,78 @@ if ($EnableDebug) {
     $script:DebugPreference = 'Continue'
 }
 
-trap {
-    Invoke-CleanUp $tempDir
-    break
-}
-
-$BaseUrl = 'https://github.com/N-Silbernagel/fs-clip/releases'
-
-# convert $WatchDir to an absolute path
-$WatchDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($WatchDir)
-$InstallDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($InstallDir)
-
 $tempDir = ''
-do {
-    $tempDir = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ([System.Guid]::NewGuid())
-} while (Test-Path -Path $tempDir)
-New-Item -ItemType Directory -Path $tempDir | Out-Null
+$BaseUrl = $ReleaseBaseUrl.TrimEnd('/')
 
-Write-DebugVariable 'WatchDir', 'InstallDir', 'Tag', 'tempDir'
+try {
 
-$goOS = Get-GoOS
-$goArch = Get-GoArch
-foreach ($variableName in @('goOS', 'goArch')) {
-    Write-DebugVariable $variableName
+    # convert $WatchDir to an absolute path
+    $WatchDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($WatchDir)
+    $InstallDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($InstallDir)
+
+    $tempDir = ''
+    do {
+        $tempDir = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ([System.Guid]::NewGuid())
+    } while (Test-Path -Path $tempDir)
+    New-Item -ItemType Directory -Path $tempDir | Out-Null
+
+    Write-DebugVariable 'WatchDir', 'InstallDir', 'Tag', 'tempDir'
+
+    $goOS = Get-GoOS
+    if ($goOS -ne 'windows') {
+        throw 'Use install.sh on macOS and Linux.'
+    }
+    $goArch = Get-GoArch
+    foreach ($variableName in @('goOS', 'goArch')) {
+        Write-DebugVariable $variableName
+    }
+
+    $realTag = Get-RealTag $Tag
+    $version = $realTag.TrimStart('v')
+    Write-Information "found version ${version} for ${Tag}/${goOS}/${goArch}"
+
+    $binarySuffix = ''
+    $archiveFormat = 'tar.gz'
+    switch ($goOS) {
+        'linux' {
+            break
+        }
+        'windows' {
+            $binarySuffix = '.exe'
+            $archiveFormat = 'zip'
+            break
+        }
+    }
+    Write-DebugVariable 'binarySuffix', 'archiveFormat'
+
+    $archiveFilename = "fs-clip_${version}_${goOS}_${goArch}.${archiveFormat}"
+    $tempArchivePath = Join-Path -Path $tempDir -ChildPath $archiveFilename
+    Write-DebugVariable 'archiveFilename', 'tempArchivePath'
+    Invoke-FileDownload "${BaseUrl}/download/${realTag}/${archiveFilename}" $tempArchivePath
+
+    $checksums = Get-Checksums $realTag $version
+    Confirm-Checksum $tempArchivePath $checksums
+
+    Expand-Archive $tempArchivePath
+
+    $binaryFilename = "fs-clip${binarySuffix}"
+    $tempBinaryPath = Join-Path -Path $tempDir -ChildPath $binaryFilename
+    Write-DebugVariable 'binaryFilename', 'tempBinaryPath'
+    [System.IO.Directory]::CreateDirectory($WatchDir) | Out-Null
+    [System.IO.Directory]::CreateDirectory($InstallDir) | Out-Null
+    $binary = Join-Path -Path $InstallDir -ChildPath $binaryFilename
+    Write-DebugVariable 'binary'
+    Move-Item -Path $tempBinaryPath -Destination $binary -Force
+    Write-Information "installed ${binary}"
+
+    Add-PathEntryIfMissing $InstallDir
+    Write-Information "ensured $InstallDir is in user PATH"
+
+} finally {
+    Invoke-CleanUp $tempDir
 }
 
-$realTag = Get-RealTag $Tag
-$version = $realTag.TrimStart('v')
-Write-Information "found version ${version} for ${Tag}/${goOS}/${goArch}"
-
-$binarySuffix = ''
-$archiveFormat = 'tar.gz'
-switch ($goOS) {
-    'linux' {
-        break
-    }
-    'windows' {
-        $binarySuffix = '.exe'
-        $archiveFormat = 'zip'
-        break
-    }
+if (-not $NoStart) {
+    & $binary --watch-dir $WatchDir
+    if ($LASTEXITCODE -ne 0) { throw "fs-clip exited with status $LASTEXITCODE" }
 }
-Write-DebugVariable 'binarySuffix', 'archiveFormat'
-
-$archiveFilename = "fs-clip_${version}_${goOS}_${goArch}.${archiveFormat}"
-$tempArchivePath = Join-Path -Path $tempDir -ChildPath $archiveFilename
-Write-DebugVariable 'archiveFilename', 'tempArchivePath'
-Invoke-FileDownload "${BaseUrl}/download/${realTag}/${archiveFilename}" $tempArchivePath
-
-$checksums = Get-Checksums $realTag $version
-Confirm-Checksum $tempArchivePath $checksums
-
-Expand-Archive $tempArchivePath
-
-$binaryFilename = "fs-clip${binarySuffix}"
-$tempBinaryPath = Join-Path -Path $tempDir -ChildPath $binaryFilename
-Write-DebugVariable 'binaryFilename', 'tempBinaryPath'
-[System.IO.Directory]::CreateDirectory($WatchDir) | Out-Null
-[System.IO.Directory]::CreateDirectory($InstallDir) | Out-Null
-$binary = Join-Path -Path $InstallDir -ChildPath $binaryFilename
-Write-DebugVariable 'binary'
-Move-Item -Path $tempBinaryPath -Destination $binary -Force
-Write-Information "installed ${binary}"
-
-Add-PathEntryIfMissing $InstallDir
-Write-Information "ensured $InstallDir is in user PATH"
-
-Invoke-CleanUp $tempDir
-
-& $binary --watch-dir $WatchDir

@@ -74,7 +74,14 @@ write/read access, then starts the built application and verifies:
 - A subsequent file at a previously used path replaces the clipboard contents.
 
 Clipboard access failures fail the job rather than skipping the tests. Image
-assertions use Pillow to compare pixels read through native clipboard tools.
+assertions use Go's PNG decoder to compare pixels read through native clipboard tools.
+
+The same jobs exercise the installers against a local release server: latest and
+explicit tags, repeat installs, custom paths, and invalid or missing checksums.
+They then run the clipboard suite against the installed executable. Service-manager
+commands are recorded and generated service files are checked; these tests do not
+verify service startup at login. macOS and Windows installer coverage is verified
+when their CI jobs pass.
 
 ## Contributing
 

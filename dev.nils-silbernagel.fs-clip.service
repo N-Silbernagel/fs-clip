@@ -5,5 +5,7 @@ StartLimitIntervalSec=0
 Type=simple
 Restart=always
 RestartSec=1
-User={USER}
-ExecStart={BINARY_PATH} --watch-dir {WATCH_DIR}
+ExecStart="{BINARY_PATH}" --watch-dir "{WATCH_DIR}"
+
+[Install]
+WantedBy=default.target

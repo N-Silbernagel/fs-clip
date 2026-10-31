@@ -29,11 +29,6 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.x'
-      - name: Install image assertion dependency
-        run: python -m pip install "Pillow>=12,<13"
       - name: Install X11 test environment
         if: runner.os == 'Linux'
         run: |
@@ -43,15 +38,12 @@ jobs:
         run: |
           go test -race ./...
           go vet ./...
-      - name: Build application
-        shell: bash
-        run: go build -race -o integration-bin/fs-clip${{ runner.os == 'Windows' && '.exe' || '' }} .
-      - name: Linux clipboard integration
+      - name: Linux installation and clipboard integration
         if: runner.os == 'Linux'
-        run: env -u WAYLAND_DISPLAY xvfb-run -a python scripts/test-integration.py ./integration-bin/fs-clip
-      - name: macOS clipboard integration
+        run: env -u WAYLAND_DISPLAY xvfb-run -a go test -race -tags=integration -v -timeout=5m ./integration
+      - name: macOS installation and clipboard integration
         if: runner.os == 'macOS'
-        run: python scripts/test-integration.py ./integration-bin/fs-clip
-      - name: Windows clipboard integration
+        run: go test -race -tags=integration -v -timeout=5m ./integration
+      - name: Windows installation and clipboard integration
         if: runner.os == 'Windows'
-        run: python scripts/test-integration.py ./integration-bin/fs-clip.exe
+        run: go test -race -tags=integration -v -timeout=5m ./integration
