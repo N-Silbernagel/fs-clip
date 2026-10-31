@@ -22,6 +22,8 @@ builds:
       - arm64
 
   - id: windows
+    ldflags:
+      - -s -w -H=windowsgui
     env:
       - CGO_ENABLED=0
     goos:

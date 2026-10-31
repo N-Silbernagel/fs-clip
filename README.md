@@ -32,7 +32,17 @@ Run in PowerShell:
 & ([scriptblock]::Create((Invoke-RestMethod 'https://github.com/N-Silbernagel/fs-clip/releases/latest/download/install.ps1')))
 ```
 
-The installer adds FSClip to your user PATH and starts it in the foreground.
+The installer adds FSClip to your user PATH and starts it in the background. A scheduled task starts it automatically when you log in, without administrator privileges.
+
+To stop it and remove automatic startup, run in PowerShell:
+
+```powershell
+$taskName = 'dev.nils-silbernagel.fs-clip-' + [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+Stop-ScheduledTask -TaskName $taskName
+Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+```
+
+To uninstall completely, also delete `%LOCALAPPDATA%\Programs\fs-clip` (or your custom installation directory) and remove its entry from your user PATH.
 
 ## Configuration
 
@@ -42,6 +52,8 @@ sh -c "$(curl -fsLS https://github.com/N-Silbernagel/fs-clip/releases/latest/dow
 ``` 
 
 to configure a different directory to watch during installation (you can just reinstall fs-clip if it is already installed)
+
+On Windows, pass `-WatchDir 'YOUR_DIRECTORY'` to the PowerShell installation command. Use `-NoStart` to register the login task without starting it immediately.
 
 ## How It Works
 
@@ -99,10 +111,12 @@ the same filesystem.
 
 The same jobs exercise the installers against a local release server: latest and
 explicit tags, repeat installs, custom paths, and invalid or missing checksums.
-They then run the clipboard suite against the installed executable. Service-manager
-commands are recorded and generated service files are checked; these tests do not
-verify service startup at login. macOS and Windows installer coverage is verified
-when their CI jobs pass.
+They then run the clipboard suite against the installed executable. On macOS and
+Linux, service-manager commands are recorded and generated service files are checked.
+On Windows, tests register the real login task and verify its settings, repeat
+installs, deferred startup, and text and image clipboard access. Tests remove the
+task afterward. These tests do not simulate a fresh login; macOS and Windows
+installer coverage is verified when their CI jobs pass.
 
 ## Contributing
 

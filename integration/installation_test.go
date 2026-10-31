@@ -67,7 +67,11 @@ func TestInstallation(t *testing.T) {
 	binary := filepath.Join(root, binaryName)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	build := exec.CommandContext(ctx, "go", "build", "-o", binary, ".")
+	buildArgs := []string{"build", "-o", binary}
+	if runtime.GOOS == "windows" {
+		buildArgs = append(buildArgs, "-ldflags=-H=windowsgui")
+	}
+	build := exec.CommandContext(ctx, "go", append(buildArgs, ".")...)
 	build.Env = append(os.Environ(), "CGO_ENABLED=0")
 	build.Dir = repo
 	output, err := build.CombinedOutput()
@@ -144,13 +148,17 @@ esac
 	env := append(os.Environ(), "HOME="+home, "SERVICE_LOG="+serviceLog,
 		"PATH="+commands+string(os.PathListSeparator)+os.Getenv("PATH"), "FS_CLIP_RELEASE_BASE_URL="+server.URL)
 
+	if runtime.GOOS == "windows" {
+		prepareWindowsTask(t)
+	}
+
 	install := func(t *testing.T, requestedTag string, success bool) {
 		t.Helper()
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
 		var cmd *exec.Cmd
 		if runtime.GOOS == "windows" {
-			invocation := fmt.Sprintf("& %s -InstallDir %s -WatchDir %s -Tag %s -ReleaseBaseUrl %s -NoStart\n",
+			invocation := fmt.Sprintf("& %s -InstallDir %s -WatchDir %s -Tag %s -ReleaseBaseUrl %s\n",
 				psQuote(filepath.Join(repo, "scripts", "install.ps1")), psQuote(bindir), psQuote(watchdir), psQuote(requestedTag), psQuote(server.URL))
 			repeat := ""
 			if success {
@@ -178,10 +186,17 @@ esac
 	}
 
 	if !t.Run("Latest", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			requireSuccess(t, os.MkdirAll(bindir, 0755))
+			writeFile(t, installed, original, 0755)
+			startApplication(t, installed, watchdir)
+		}
 		install(t, "latest", true)
 		assertContents(t, installed, original)
 		command(t, nil, installed, "-h")
 		switch runtime.GOOS {
+		case "windows":
+			assertWindowsTask(t, installed, watchdir)
 		case "darwin":
 			config := filepath.Join(home, "Library", "LaunchAgents", service)
 			command(t, nil, "plutil", "-lint", config)
@@ -225,7 +240,13 @@ esac
 		if runtime.GOOS != "windows" {
 			startApplication(t, installed, filepath.Join(root, "upgrade-watch"))
 		}
+		if runtime.GOOS == "windows" {
+			watchdir = filepath.Join(home, "updated watch ' & copy") + string(os.PathSeparator)
+		}
 		install(t, tag, true)
+		if runtime.GOOS == "windows" {
+			assertWindowsTask(t, installed, watchdir)
+		}
 		assertContents(t, installed, original)
 		if runtime.GOOS != "windows" {
 			stop := "unload "
@@ -251,5 +272,22 @@ esac
 			return
 		}
 	}
+	if runtime.GOOS == "windows" {
+		t.Run("TaskSurvivesRejectedUpdate", func(t *testing.T) { assertWindowsTask(t, installed, watchdir) })
+		t.Run("RegisterWithoutStarting", func(t *testing.T) {
+			writeFile(t, checksums, []byte(digest+"  "+archiveName+"\n"), 0600)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+			defer cancel()
+			script := windowsTaskIdentity + "$originalPath=[Environment]::GetEnvironmentVariable('Path','User'); try {\n" + fmt.Sprintf(
+				"& %s -InstallDir %s -WatchDir %s -ReleaseBaseUrl %s -NoStart\n",
+				psQuote(filepath.Join(repo, "scripts", "install.ps1")), psQuote(bindir), psQuote(watchdir), psQuote(server.URL)) +
+				"if ((Get-ScheduledTask -TaskName $taskName).State -ne 'Ready') { throw 'NoStart started the task' }; " +
+				"Start-ScheduledTask -TaskName $taskName\n" +
+				"} finally { [Environment]::SetEnvironmentVariable('Path',$originalPath,'User') }"
+			commandOutput(t, nil, powershellCommand(ctx, "$ErrorActionPreference='Stop'; "+script, env))
+			assertWindowsTask(t, installed, watchdir)
+		})
+	}
+
 	t.Run("InstalledClipboard", func(t *testing.T) { testClipboard(t, installed) })
 }

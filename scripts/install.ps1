@@ -17,7 +17,7 @@ Specifies where fs-clip.exe is installed. "%LOCALAPPDATA%\\Programs\\fs-clip" is
 Specifies the version of fs-clip to install. "latest" is the default. Alias: t
 
 .PARAMETER NoStart
-Install without starting fs-clip in the foreground.
+Register the login task without starting it immediately.
 
 .PARAMETER ReleaseBaseUrl
 Release server URL. Defaults to the GitHub releases endpoint.
@@ -26,7 +26,7 @@ Release server URL. Defaults to the GitHub releases endpoint.
 If specified, print debug output. Alias: d
 
 .EXAMPLE
-PS> iex "&{$(irm 'https://github.com/N-Silbernagel/fs-clip/releases/latest/download/install.ps1')}
+PS> & ([scriptblock]::Create((Invoke-RestMethod 'https://github.com/N-Silbernagel/fs-clip/releases/latest/download/install.ps1')))
 
 #>
 [CmdletBinding()]
@@ -283,17 +283,55 @@ try {
     [System.IO.Directory]::CreateDirectory($InstallDir) | Out-Null
     $binary = Join-Path -Path $InstallDir -ChildPath $binaryFilename
     Write-DebugVariable 'binary'
+
+    $userId = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    $taskName = "dev.nils-silbernagel.fs-clip-${userId}"
+    $existingTask = Get-ScheduledTask | Where-Object { $_.TaskPath -eq '\' -and $_.TaskName -eq $taskName }
+    if ($existingTask) {
+        Stop-ScheduledTask -TaskName $taskName
+        $deadline = [DateTime]::UtcNow.AddSeconds(30)
+        while ((Get-ScheduledTask -TaskName $taskName).State -eq 'Running') {
+            if ([DateTime]::UtcNow -ge $deadline) {
+                throw 'Timed out stopping the existing FSClip task.'
+            }
+            Start-Sleep -Milliseconds 100
+        }
+    }
+
+    # Migrate instances started by the previous foreground installer.
+    $sessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
+    foreach ($process in @(Get-Process -Name fs-clip -ErrorAction SilentlyContinue)) {
+        if ($process.SessionId -eq $sessionId -and $process.Path -eq $binary) {
+            Stop-Process -InputObject $process -Force
+            if (-not $process.WaitForExit(30000)) {
+                throw 'Timed out stopping the existing FSClip process.'
+            }
+        }
+    }
+
     Move-Item -Path $tempBinaryPath -Destination $binary -Force
     Write-Information "installed ${binary}"
 
     Add-PathEntryIfMissing $InstallDir
     Write-Information "ensured $InstallDir is in user PATH"
 
+    # Windows command-line quoting doubles trailing backslashes before a quote.
+    $quotedWatchDir = '"' + ($WatchDir -replace '(\\*)"', '$1$1\"' -replace '(\\+)$', '$1$1') + '"'
+    $action = New-ScheduledTaskAction -Execute $binary -Argument "--watch-dir $quotedWatchDir"
+    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $userId
+    $principal = New-ScheduledTaskPrincipal -UserId $userId -LogonType Interactive -RunLevel Limited
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+        -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) `
+        -MultipleInstances IgnoreNew
+    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger `
+        -Principal $principal -Settings $settings -Force | Out-Null
+    Write-Information "registered login task ${taskName}"
+
+    if (-not $NoStart) {
+        Start-ScheduledTask -TaskName $taskName
+        Write-Information 'started FSClip in the background'
+    }
+
 } finally {
     Invoke-CleanUp $tempDir
-}
-
-if (-not $NoStart) {
-    & $binary --watch-dir $WatchDir
-    if ($LASTEXITCODE -ne 0) { throw "fs-clip exited with status $LASTEXITCODE" }
 }

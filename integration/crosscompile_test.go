@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"debug/buildinfo"
+	"debug/pe"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,11 +25,25 @@ func TestCrossCompileReleaseTargets(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			defer cancel()
 			binary := filepath.Join(t.TempDir(), "fs-clip")
-			cmd := exec.CommandContext(ctx, "go", "build", "-o", binary, ".")
+			args := []string{"build", "-o", binary}
+			if target.os == "windows" {
+				args = append(args, "-ldflags=-H=windowsgui")
+			}
+			cmd := exec.CommandContext(ctx, "go", append(args, ".")...)
 			cmd.Dir = ".."
 			cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS="+target.os, "GOARCH="+target.arch)
 			if output, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("Release target build failed: %v\n%s", err, output)
+			}
+			if target.os == "windows" {
+				executable, err := pe.Open(binary)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer executable.Close()
+				if executable.OptionalHeader.(*pe.OptionalHeader64).Subsystem != pe.IMAGE_SUBSYSTEM_WINDOWS_GUI {
+					t.Fatal("Windows release binary would open a console window")
+				}
 			}
 			info, err := buildinfo.ReadFile(binary)
 			if err != nil {
