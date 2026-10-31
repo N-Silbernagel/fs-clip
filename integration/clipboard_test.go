@@ -7,12 +7,16 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/gif"
+	"image/jpeg"
 	"image/png"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	_ "golang.org/x/image/webp"
 )
 
 func startApplication(t *testing.T, binary, watched string) string {
@@ -107,33 +111,46 @@ func testClipboard(t *testing.T, binary string) {
 	if t.Failed() {
 		return
 	}
-	t.Run("PNGImage", func(t *testing.T) {
-		expected := image.NewRGBA(image.Rect(0, 0, 2, 2))
-		colors := []color.RGBA{{255, 0, 0, 255}, {0, 255, 0, 255}, {0, 0, 255, 255}, {255, 255, 255, 255}}
-		for i, c := range colors {
-			expected.SetRGBA(i%2, i/2, c)
-		}
-		var data bytes.Buffer
-		requireSuccess(t, png.Encode(&data, expected))
-		path := filepath.Join(watched, "image.png")
-		writeFile(t, path, data.Bytes(), 0600)
-		waitFor(t, "image source removal", func() bool { _, err := os.Stat(path); return os.IsNotExist(err) })
-		actual := readClipboardImage(t)
-		if actual.Bounds().Size() != expected.Bounds().Size() {
-			t.Fatal("Clipboard image dimensions differ")
-		}
-		for y := 0; y < 2; y++ {
-			for x := 0; x < 2; x++ {
-				r, g, b, _ := actual.At(actual.Bounds().Min.X+x, actual.Bounds().Min.Y+y).RGBA()
-				er, eg, eb, _ := expected.At(x, y).RGBA()
-				if r != er || g != eg || b != eb {
-					t.Fatalf("Clipboard image pixel differs at (%d,%d)", x, y)
+	for _, format := range []string{"png", "jpeg", "gif", "webp"} {
+		t.Run(format+"Image", func(t *testing.T) {
+			source := image.NewRGBA(image.Rect(0, 0, 2, 2))
+			colors := []color.RGBA{{255, 0, 0, 255}, {0, 255, 0, 255}, {0, 0, 255, 255}, {255, 255, 255, 255}}
+			for i, c := range colors {
+				source.SetRGBA(i%2, i/2, c)
+			}
+			var data bytes.Buffer
+			switch format {
+			case "png":
+				requireSuccess(t, png.Encode(&data, source))
+			case "jpeg":
+				requireSuccess(t, jpeg.Encode(&data, source, nil))
+			case "gif":
+				requireSuccess(t, gif.Encode(&data, source, nil))
+			case "webp":
+				data.Write(readFile(t, "testdata/image.webp"))
+			}
+			expected, _, err := image.Decode(bytes.NewReader(data.Bytes()))
+			requireSuccess(t, err)
+			path := filepath.Join(watched, "image."+format)
+			writeFile(t, path, data.Bytes(), 0600)
+			waitFor(t, "image source removal", func() bool { _, err := os.Stat(path); return os.IsNotExist(err) })
+			actual := readClipboardImage(t)
+			if actual.Bounds().Size() != expected.Bounds().Size() {
+				t.Fatal("Clipboard image dimensions differ")
+			}
+			for y := 0; y < expected.Bounds().Dy(); y++ {
+				for x := 0; x < expected.Bounds().Dx(); x++ {
+					r, g, b, a := actual.At(actual.Bounds().Min.X+x, actual.Bounds().Min.Y+y).RGBA()
+					er, eg, eb, ea := expected.At(expected.Bounds().Min.X+x, expected.Bounds().Min.Y+y).RGBA()
+					if r != er || g != eg || b != eb || a != ea {
+						t.Fatalf("Clipboard image pixel differs at (%d,%d)", x, y)
+					}
 				}
 			}
+		})
+		if t.Failed() {
+			return
 		}
-	})
-	if t.Failed() {
-		return
 	}
 	t.Run("ReusedPathReplacesImage", func(t *testing.T) {
 		text := "Next copy replaces the image clipboard contents."

@@ -12,7 +12,7 @@ Some tools can only emit output as files. If your next step is to paste that out
 ## Key Features
 * Zero friction workflow – Just write or drag files into the watched directory
 * Auto copy & prune – Contents are copied; the original file is deleted
-* Text & Image modes - Either copies files as text or as image
+* Text & Image modes - Copies text files and PNG, JPEG, GIF, and WebP images. Images become PNG on the clipboard; animated images use their first frame.
 * Minimal footprint – Single small executable
 
 ## Installation
@@ -79,7 +79,7 @@ write/read access, then starts the built application and verifies:
 - Unicode text is copied completely and its source is removed.
 - Complete contents of a file written in chunks reach the clipboard.
 - Unsupported files retain their contents and leave the clipboard unchanged.
-- PNG images retain their dimensions and pixels on the clipboard.
+- PNG, JPEG, GIF, and WebP images become valid PNG clipboard data with matching dimensions and decoded pixels.
 - A subsequent file at a previously used path replaces the clipboard contents.
 
 Clipboard access failures fail the job rather than skipping the tests. Image

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	_ "image/gif"
+	_ "image/jpeg"
 	"log/slog"
 	"net/http"
 	"os"
@@ -15,6 +17,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"golang.design/x/clipboard"
+	_ "golang.org/x/image/webp"
 )
 
 func ensureDir(dirName string) error {
