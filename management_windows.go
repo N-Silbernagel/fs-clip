@@ -128,7 +128,7 @@ func platformStop(binaryPath string) error {
 	if err != nil {
 		return err
 	}
-	// Ending an already stopped or absent task is harmless. Also stop legacy foreground instances.
+	// Ending an already stopped or absent task is harmless. Wait for matching processes to exit before replacing the executable.
 	platformCommand("schtasks.exe", "/End", "/TN", name)
 	snapshot, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
 	if err != nil {

@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -135,43 +134,6 @@ func TestExecutableReplacementRollback(t *testing.T) {
 	}
 	if data, err := os.ReadFile(target); err != nil || string(data) != "old executable" {
 		t.Fatalf("Rollback: %s, %v", data, err)
-	}
-}
-
-func TestLegacySettingsMigration(t *testing.T) {
-	for _, format := range []string{"shell", "powershell"} {
-		t.Run(format, func(t *testing.T) {
-			dir := managementEnvironment(t)
-			if err := os.MkdirAll(dir, 0700); err != nil {
-				t.Fatal(err)
-			}
-			watched := filepath.Join(t.TempDir(), "saved watch")
-			binDir := filepath.Join(t.TempDir(), "custom bin")
-			if format == "shell" {
-				for name, value := range map[string]string{"watch-dir": watched, "install-dir": binDir} {
-					if err := os.WriteFile(filepath.Join(dir, name), []byte(value+"\n"), 0600); err != nil {
-						t.Fatal(err)
-					}
-				}
-			} else {
-				data, err := json.Marshal(map[string]any{"WatchDir": watched, "InstallDir": binDir, "Installed": true, "PathAdded": true})
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(filepath.Join(dir, "settings.json"), append([]byte{0xef, 0xbb, 0xbf}, data...), 0600); err != nil {
-					t.Fatal(err)
-				}
-			}
-			m := manager{dir: dir, out: io.Discard}
-			p, err := m.loadPreferences()
-			if err != nil || p.WatchDir != watched {
-				t.Fatalf("Preferences = %+v, %v", p, err)
-			}
-			inst, err := m.loadInstallation()
-			if err != nil || inst == nil || inst.Binary != filepath.Join(binDir, executableName()) {
-				t.Fatalf("Installation = %+v, %v", inst, err)
-			}
-		})
 	}
 }
 

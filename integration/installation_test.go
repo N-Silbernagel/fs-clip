@@ -445,33 +445,6 @@ esac
 			}
 		})
 	}
-	t.Run("MigrateScriptManagedInstallation", func(t *testing.T) {
-		var previous struct {
-			PathAdded bool `json:"path_added"`
-		}
-		requireSuccess(t, json.Unmarshal(readFile(t, filepath.Join(state, "installation.json")), &previous))
-		legacyManager := "manage.sh"
-		if runtime.GOOS == "windows" {
-			legacyManager = "manage.ps1"
-			data, err := json.Marshal(map[string]any{"WatchDir": watchdir, "InstallDir": bindir, "PathAdded": previous.PathAdded, "Installed": true})
-			requireSuccess(t, err)
-			writeFile(t, filepath.Join(state, "settings.json"), append([]byte{0xef, 0xbb, 0xbf}, data...), 0600)
-		} else {
-			writeFile(t, filepath.Join(state, "watch-dir"), []byte(watchdir+"\n"), 0600)
-			writeFile(t, filepath.Join(state, "install-dir"), []byte(bindir+"\n"), 0600)
-		}
-		writeFile(t, filepath.Join(state, legacyManager), []byte("obsolete manager"), 0600)
-		requireSuccess(t, os.Remove(filepath.Join(state, "installation.json")))
-		requireSuccess(t, os.Remove(filepath.Join(state, "config.json")))
-		if output, err := runBootstrap(t); err != nil {
-			t.Fatalf("Migration: %v\n%s", err, output)
-		}
-		assertSavedWatch(t)
-		assertContents(t, installed, original)
-		if _, err := os.Stat(filepath.Join(state, legacyManager)); !os.IsNotExist(err) {
-			t.Fatalf("Obsolete management script remains after migration: %v", err)
-		}
-	})
 	t.Run("ReinstallPreservesSettings", func(t *testing.T) {
 		output, err := runBootstrap(t)
 		if err != nil {

@@ -101,23 +101,9 @@ func normalizedPath(path string) (string, error) {
 
 func (m manager) loadPreferences() (preferences, error) {
 	var p preferences
-	found, err := readJSON(filepath.Join(m.dir, "config.json"), &p)
+	_, err := readJSON(filepath.Join(m.dir, "config.json"), &p)
 	if err != nil {
 		return p, err
-	}
-	if !found {
-		if data, err := os.ReadFile(filepath.Join(m.dir, "watch-dir")); err == nil {
-			p.WatchDir = strings.TrimSuffix(string(data), "\n")
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return p, err
-		}
-		var legacy struct{ WatchDir string }
-		if _, err := readJSON(filepath.Join(m.dir, "settings.json"), &legacy); err != nil {
-			return p, err
-		}
-		if p.WatchDir == "" {
-			p.WatchDir = legacy.WatchDir
-		}
 	}
 	if p.WatchDir == "" {
 		home, err := os.UserHomeDir()
@@ -139,25 +125,7 @@ func (m manager) loadInstallation() (*installation, error) {
 		return nil, err
 	}
 	if !found {
-		if data, err := os.ReadFile(filepath.Join(m.dir, "install-dir")); err == nil {
-			inst = installation{Binary: filepath.Join(strings.TrimSuffix(string(data), "\n"), executableName()), Method: "script"}
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return nil, err
-		}
-		var legacy struct {
-			InstallDir string
-			PathAdded  bool
-			Installed  bool
-		}
-		if _, err := readJSON(filepath.Join(m.dir, "settings.json"), &legacy); err != nil {
-			return nil, err
-		}
-		if inst.Binary == "" && legacy.Installed {
-			inst = installation{Binary: filepath.Join(legacy.InstallDir, executableName()), Method: "script", PathAdded: legacy.PathAdded}
-		}
-		if inst.Binary == "" {
-			return nil, nil
-		}
+		return nil, nil
 	}
 	if inst.Method != "script" {
 		return nil, errors.New("this installation is managed externally; use its package manager")
@@ -176,8 +144,6 @@ func readJSON(path string, target any) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	// Windows PowerShell's UTF-8 settings files can have a byte-order mark.
-	data = []byte(strings.TrimPrefix(string(data), "\ufeff"))
 	if err := json.Unmarshal(data, target); err != nil {
 		return false, fmt.Errorf("read %s: %w", path, err)
 	}
@@ -298,7 +264,6 @@ func (m manager) install(binDir string) (err error) {
 		return err
 	}
 	success = true
-	m.removeLegacyFiles()
 	fmt.Fprintf(m.out, "Installed %s\nWatching: %s\nUse fs-clip configure, fs-clip status, or fs-clip uninstall.\n", target, p.WatchDir)
 	return nil
 }
@@ -372,14 +337,6 @@ func (m manager) uninstall() error {
 		fmt.Fprintln(m.out, "No managed installation found; nothing to uninstall.")
 		return nil
 	}
-	// Preserve legacy preferences before removing their old installation records.
-	p, err := m.loadPreferences()
-	if err != nil {
-		return err
-	}
-	if err := writeJSON(filepath.Join(m.dir, "config.json"), p); err != nil {
-		return err
-	}
 	if err := platformRemoveStartup(inst.Binary); err != nil {
 		return err
 	}
@@ -394,17 +351,8 @@ func (m manager) uninstall() error {
 	if err := removeIfExists(filepath.Join(m.dir, "installation.json")); err != nil {
 		return err
 	}
-	m.removeLegacyFiles()
 	fmt.Fprintln(m.out, "FSClip uninstalled. Watched files, preferences, and logs were preserved.")
 	return nil
-}
-
-func (m manager) removeLegacyFiles() {
-	for _, name := range []string{"manage.sh", "manage.ps1", "install-dir", "watch-dir", "settings.json", serviceLabel + ".service", serviceLabel + ".plist"} {
-		if err := removeIfExists(filepath.Join(m.dir, name)); err != nil {
-			fmt.Fprintf(m.out, "Could not remove obsolete file %s: %v\n", name, err)
-		}
-	}
 }
 
 func removeIfExists(path string) error {
