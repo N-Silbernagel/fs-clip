@@ -10,9 +10,11 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -69,6 +71,22 @@ func addFileToClipboard(filePath string, logger *slog.Logger) error {
 }
 
 func main() {
+	prepareCommandLine()
+	if handled, err := managementCommand(os.Args[1:], os.Stdout); handled {
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "fs-clip:", err)
+			os.Exit(1)
+		}
+		return
+	}
+	runWorker()
+}
+
+func runWorker() {
+	flag.Usage = func() {
+		fmt.Fprintln(os.Stderr, "Usage: fs-clip [worker flags] | install | configure --watch-dir DIRECTORY | status | uninstall")
+		flag.PrintDefaults()
+	}
 	// only log warnings by default, don't log too much to users disk
 	logLevel := slog.LevelWarn
 
@@ -82,6 +100,10 @@ func main() {
 		"Directory to watch for files",
 	)
 	flag.Parse()
+	if flag.NArg() != 0 {
+		fmt.Fprintln(os.Stderr, "Unexpected arguments:", flag.Args())
+		os.Exit(2)
+	}
 
 	logger := createLogger(logLevel)
 
@@ -114,8 +136,9 @@ func main() {
 
 	logger.Debug("Watching directory", "path", watchPath)
 
-	// Block main goroutine forever.
-	<-make(chan struct{})
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	<-ctx.Done()
 }
 
 func determineWatchPath(watchDirParam string) string {
@@ -128,12 +151,15 @@ func determineWatchPath(watchDirParam string) string {
 		return absoluteWatchDirParam
 	}
 
-	homeDir, err := os.UserHomeDir()
+	dir, err := stateDirectory()
 	if err != nil {
 		panic(err)
 	}
-
-	return homeDir + string(os.PathSeparator) + "copy-to-clipboard"
+	p, err := (manager{dir: dir}).loadPreferences()
+	if err != nil {
+		panic(err)
+	}
+	return p.WatchDir
 }
 
 func createLogger(level slog.Level) *slog.Logger {

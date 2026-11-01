@@ -25,36 +25,23 @@ import (
 
 const label = "dev.nils-silbernagel.fs-clip"
 
-func releaseArchive(t *testing.T, binary, service string) []byte {
+func releaseArchive(t *testing.T, binary string) []byte {
 	t.Helper()
 	var archive bytes.Buffer
-	binaryName := "fs-clip"
+	data := readFile(t, binary)
 	if runtime.GOOS == "windows" {
 		output := zip.NewWriter(&archive)
-		entry, err := output.Create(binaryName + ".exe")
+		entry, err := output.Create("fs-clip.exe")
 		requireSuccess(t, err)
-		_, err = entry.Write(readFile(t, binary))
-		requireSuccess(t, err)
-		entry, err = output.Create("manage.ps1")
-		requireSuccess(t, err)
-		_, err = entry.Write(readFile(t, filepath.Join("..", "scripts", "manage.ps1")))
+		_, err = entry.Write(data)
 		requireSuccess(t, err)
 		requireSuccess(t, output.Close())
 	} else {
 		compressed := gzip.NewWriter(&archive)
 		output := tar.NewWriter(compressed)
-		for _, file := range []struct {
-			path, name string
-			mode       int64
-		}{
-			{binary, binaryName, 0755}, {service, filepath.Base(service), 0644},
-			{filepath.Join("..", "scripts", "manage.sh"), "manage.sh", 0700},
-		} {
-			data := readFile(t, file.path)
-			requireSuccess(t, output.WriteHeader(&tar.Header{Name: file.name, Mode: file.mode, Size: int64(len(data))}))
-			_, err := output.Write(data)
-			requireSuccess(t, err)
-		}
+		requireSuccess(t, output.WriteHeader(&tar.Header{Name: "fs-clip", Mode: 0755, Size: int64(len(data))}))
+		_, err := output.Write(data)
+		requireSuccess(t, err)
 		requireSuccess(t, output.Close())
 		requireSuccess(t, compressed.Close())
 	}
@@ -96,8 +83,8 @@ func TestInstallation(t *testing.T) {
 	}
 	original := readFile(t, binary)
 	home := filepath.Join(root, "home with spaces")
-	bindir := filepath.Join(home, "custom bin")
-	watchdir := filepath.Join(home, "watch & copy")
+	bindir := filepath.Join(home, "custom & % bin")
+	watchdir := filepath.Join(home, "copy-to-clipboard")
 	installed := filepath.Join(bindir, binaryName)
 	web := filepath.Join(root, "web")
 	const version = "0.0.0-test"
@@ -116,7 +103,7 @@ func TestInstallation(t *testing.T) {
 		t.Fatalf("Unsupported test platform: %s", runtime.GOOS)
 	}
 	archiveName := fmt.Sprintf("fs-clip_%s_%s_%s.%s", version, runtime.GOOS, runtime.GOARCH, extension)
-	archive := releaseArchive(t, binary, filepath.Join(repo, service))
+	archive := releaseArchive(t, binary)
 	writeFile(t, filepath.Join(downloads, archiveName), archive, 0600)
 	digest := fmt.Sprintf("%x", sha256.Sum256(archive))
 	checksums := filepath.Join(downloads, fmt.Sprintf("fs-clip_%s_checksums.txt", version))
@@ -144,6 +131,10 @@ case "$*" in
   print*) test -f "$SERVICE_LOG.loaded";;
   *"enable --now"*|"bootstrap "*)
     if test -f "$FAIL_SERVICE_ONCE"; then rm "$FAIL_SERVICE_ONCE"; exit 1; fi
+    if test -f "$BLOCK_SERVICE"; then
+      touch "$BLOCK_SERVICE.started"
+      while test -f "$BLOCK_SERVICE"; do sleep 0.05; done
+    fi
     touch "$SERVICE_LOG.loaded";;
   *"disable --now"*|"bootout "*) rm -f "$SERVICE_LOG.loaded";;
 esac
@@ -153,7 +144,8 @@ esac
 		}
 	}
 	env := append(os.Environ(), "HOME="+home, "XDG_CONFIG_HOME="+filepath.Join(home, ".config"),
-		"LOCALAPPDATA="+filepath.Join(home, "localappdata"), "SERVICE_LOG="+serviceLog,
+		"LOCALAPPDATA="+filepath.Join(home, "localappdata"), "USERPROFILE="+home, "SERVICE_LOG="+serviceLog,
+		"BLOCK_SERVICE="+filepath.Join(root, "block-service"),
 		"FAIL_SERVICE_ONCE="+filepath.Join(root, "fail-start-once"),
 		"PATH="+commands+string(os.PathListSeparator)+os.Getenv("PATH"), "FS_CLIP_RELEASE_BASE_URL="+server.URL)
 
@@ -165,14 +157,65 @@ esac
 		})
 	}
 
+	state := filepath.Join(home, ".config", "fs-clip")
+	if runtime.GOOS == "darwin" {
+		state = filepath.Join(home, "Library", "Application Support", "fs-clip")
+	} else if runtime.GOOS == "windows" {
+		state = filepath.Join(home, "localappdata", "fs-clip")
+	}
+	runManage := func(t *testing.T, operation string, args ...string) ([]byte, error) {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		managementBinary := installed
+		if _, err := os.Stat(installed); os.IsNotExist(err) {
+			managementBinary = binary
+		}
+		cmd := exec.CommandContext(ctx, managementBinary, append([]string{strings.ToLower(operation)}, args...)...)
+		cmd.Env = env
+		return cmd.CombinedOutput()
+	}
+	manage := func(t *testing.T, operation string, args ...string) []byte {
+		t.Helper()
+		output, err := runManage(t, operation, args...)
+		if err != nil {
+			t.Fatalf("Management %s: %v\n%s", operation, err, output)
+		}
+		return output
+	}
+	assertSavedWatch := func(t *testing.T) {
+		t.Helper()
+		var saved struct {
+			WatchDir string `json:"watch_dir"`
+		}
+		requireSuccess(t, json.Unmarshal(readFile(t, filepath.Join(state, "config.json")), &saved))
+		if saved.WatchDir != filepath.Clean(watchdir) {
+			t.Fatalf("Saved watch directory = %q, expected %q", saved.WatchDir, watchdir)
+		}
+	}
+
+	runBootstrap := func(t *testing.T) ([]byte, error) {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		var cmd *exec.Cmd
+		if runtime.GOOS == "windows" {
+			cmd = powershellCommand(ctx, "& "+psQuote(filepath.Join(repo, "scripts", "install.ps1"))+" -ReleaseBaseUrl "+psQuote(server.URL), env)
+		} else {
+			cmd = exec.CommandContext(ctx, "sh", filepath.Join(repo, "scripts", "install.sh"))
+			cmd.Env = env
+		}
+		return cmd.CombinedOutput()
+	}
+
 	install := func(t *testing.T, requestedTag string, success bool) {
 		t.Helper()
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
 		var cmd *exec.Cmd
 		if runtime.GOOS == "windows" {
-			invocation := fmt.Sprintf("& %s -InstallDir %s -WatchDir %s -Tag %s -ReleaseBaseUrl %s\n",
-				psQuote(filepath.Join(repo, "scripts", "install.ps1")), psQuote(bindir), psQuote(watchdir), psQuote(requestedTag), psQuote(server.URL))
+			invocation := fmt.Sprintf("& %s -InstallDir %s -Tag %s -ReleaseBaseUrl %s\n",
+				psQuote(filepath.Join(repo, "scripts", "install.ps1")), psQuote(bindir), psQuote(requestedTag), psQuote(server.URL))
 			repeat := ""
 			if success {
 				repeat = invocation
@@ -185,7 +228,7 @@ esac
 				"} finally { [Environment]::SetEnvironmentVariable('Path',$originalPath,'User') }"
 			cmd = powershellCommand(ctx, driver, env)
 		} else {
-			cmd = exec.CommandContext(ctx, "sh", filepath.Join(repo, "scripts", "install.sh"), "-b", bindir, "-w", watchdir, "-t", requestedTag)
+			cmd = exec.CommandContext(ctx, "sh", filepath.Join(repo, "scripts", "install.sh"), "-b", bindir, "-t", requestedTag)
 			cmd.Env = env
 		}
 		output, err := cmd.CombinedOutput()
@@ -230,7 +273,7 @@ esac
 			}
 		case "linux":
 			config := string(readFile(t, filepath.Join(home, ".config", "systemd", "user", service)))
-			if !strings.Contains(config, fmt.Sprintf("ExecStart=%q --watch-dir %q", installed, watchdir)) {
+			if !strings.Contains(config, fmt.Sprintf("ExecStart=%q --watch-dir %q", strings.ReplaceAll(installed, "%", "%%"), watchdir)) {
 				t.Fatalf("Incorrect service arguments:\n%s", config)
 			}
 			if strings.Contains(config, "User=") || !strings.Contains(config, "WantedBy=default.target") {
@@ -255,6 +298,7 @@ esac
 		}
 		if runtime.GOOS == "windows" {
 			watchdir = filepath.Join(home, "updated watch ' & copy") + string(os.PathSeparator)
+			manage(t, "Configure", "--watch-dir", watchdir)
 		}
 		install(t, tag, true)
 		if runtime.GOOS == "windows" {
@@ -291,46 +335,9 @@ esac
 
 	t.Run("InstalledClipboard", func(t *testing.T) { testClipboard(t, installed) })
 
-	state := filepath.Join(home, ".config", "fs-clip")
-	manager := filepath.Join(state, "manage.sh")
-	if runtime.GOOS == "darwin" {
-		state = filepath.Join(home, "Library", "Application Support", "fs-clip")
-		manager = filepath.Join(state, "manage.sh")
-	} else if runtime.GOOS == "windows" {
-		state = filepath.Join(home, "localappdata", "fs-clip")
-		manager = filepath.Join(state, "manage.ps1")
-	}
-	runManage := func(t *testing.T, operation string, args ...string) ([]byte, error) {
-		t.Helper()
-		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-		defer cancel()
-		var cmd *exec.Cmd
-		if runtime.GOOS == "windows" {
-			invocation := "& " + psQuote(manager) + " " + operation
-			if operation == "Configure" {
-				invocation += " -WatchDir " + psQuote(args[1])
-			}
-			cmd = powershellCommand(ctx, invocation, env)
-		} else {
-			cmd = exec.CommandContext(ctx, "sh", append([]string{manager, strings.ToLower(operation)}, args...)...)
-			cmd.Env = env
-		}
-		return cmd.CombinedOutput()
-	}
-	manage := func(t *testing.T, operation string, args ...string) []byte {
-		t.Helper()
-		output, err := runManage(t, operation, args...)
-		if err != nil {
-			t.Fatalf("Management %s: %v\n%s", operation, err, output)
-		}
-		return output
-	}
 	t.Run("OfflineConfigureAndStatus", func(t *testing.T) {
-		watchdir = filepath.Join(home, "configured ' & watch")
+		watchdir = filepath.Join(home, "configured ' & watch $HOME % clip")
 		flag := "--watch-dir"
-		if runtime.GOOS == "windows" {
-			flag = "-WatchDir"
-		}
 		manage(t, "Configure", flag, watchdir)
 		output := manage(t, "Status")
 		if !bytes.Contains(output, []byte(watchdir)) || !bytes.Contains(output, []byte(installed)) {
@@ -344,9 +351,6 @@ esac
 		invalid := filepath.Join(home, "existing-file")
 		writeFile(t, invalid, []byte("keep"), 0600)
 		flag := "--watch-dir"
-		if runtime.GOOS == "windows" {
-			flag = "-WatchDir"
-		}
 		if output, err := runManage(t, "Configure", flag, invalid); err == nil {
 			t.Fatalf("Configuration accepted a regular file: %s", output)
 		}
@@ -363,7 +367,7 @@ esac
 			if !bytes.Contains(manage(t, "Status"), []byte(watchdir)) {
 				t.Fatal("Failed activation changed saved preferences")
 			}
-			assertContents(t, filepath.Join(state, "watch-dir"), []byte(watchdir+"\n"))
+			assertSavedWatch(t)
 			config := filepath.Join(home, ".config", "systemd", "user", service)
 			if runtime.GOOS == "darwin" {
 				config = filepath.Join(home, "Library", "LaunchAgents", service)
@@ -372,28 +376,102 @@ esac
 				t.Fatal("Failed configuration remains in service definition")
 			}
 		})
-		t.Run("ConcurrentManagementRejected", func(t *testing.T) {
-			lock := filepath.Join(state, "lock")
-			requireSuccess(t, os.Mkdir(lock, 0700))
-			defer os.Remove(lock)
-			if output, err := runManage(t, "Configure", "--watch-dir", filepath.Join(home, "concurrent-watch")); err == nil {
-				t.Fatalf("Concurrent management was accepted: %s", output)
+		t.Run("ConfigurePersistenceFailureRestoresStartup", func(t *testing.T) {
+			requireSuccess(t, os.Chmod(state, 0500))
+			defer os.Chmod(state, 0700)
+			if output, err := runManage(t, "Configure", "--watch-dir", filepath.Join(home, "unsaved-watch")); err == nil {
+				t.Fatalf("Configuration ignored preferences write failure: %s", output)
 			}
-			assertContents(t, filepath.Join(state, "watch-dir"), []byte(watchdir+"\n"))
+			assertSavedWatch(t)
+			config := filepath.Join(home, ".config", "systemd", "user", service)
+			if runtime.GOOS == "darwin" {
+				config = filepath.Join(home, "Library", "LaunchAgents", service)
+			}
+			if bytes.Contains(readFile(t, config), []byte("unsaved-watch")) {
+				t.Fatal("Unsaved configuration remains in startup definition")
+			}
+		})
+		t.Run("ConcurrentManagementRejected", func(t *testing.T) {
+			block := filepath.Join(root, "block-service")
+			writeFile(t, block, []byte("wait"), 0600)
+			defer os.Remove(block)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, installed, "configure", "--watch-dir", watchdir)
+			cmd.Env = env
+			var output bytes.Buffer
+			cmd.Stdout, cmd.Stderr = &output, &output
+			requireSuccess(t, cmd.Start())
+			waitFor(t, "management operation to acquire its lock", func() bool {
+				_, err := os.Stat(block + ".started")
+				return err == nil
+			})
+			if output, err := runManage(t, "Configure", "--watch-dir", filepath.Join(home, "concurrent-watch")); err == nil {
+				t.Errorf("Concurrent management was accepted: %s", output)
+			}
+			assertSavedWatch(t)
+			requireSuccess(t, os.Remove(block))
+			if err := cmd.Wait(); err != nil {
+				t.Fatalf("Original management operation: %v\n%s", err, output.String())
+			}
 		})
 	}
+	if runtime.GOOS != "windows" {
+		t.Run("FailedUpgradeRestoresExecutableAndStartup", func(t *testing.T) {
+			candidate := filepath.Join(root, "candidate")
+			candidateData := append(append([]byte(nil), original...), []byte("upgrade-marker")...)
+			writeFile(t, candidate, candidateData, 0755)
+			candidateArchive := releaseArchive(t, candidate)
+			writeFile(t, filepath.Join(downloads, archiveName), candidateArchive, 0600)
+			candidateDigest := fmt.Sprintf("%x", sha256.Sum256(candidateArchive))
+			writeFile(t, checksums, []byte(candidateDigest+"  "+archiveName+"\n"), 0600)
+			defer writeFile(t, filepath.Join(downloads, archiveName), archive, 0600)
+			defer writeFile(t, checksums, []byte(digest+"  "+archiveName+"\n"), 0600)
+			writeFile(t, filepath.Join(root, "fail-start-once"), []byte("fail"), 0600)
+			output, err := runBootstrap(t)
+			if err == nil || !bytes.Contains(output, []byte("start FSClip")) {
+				t.Fatalf("Expected activation failure: %v\n%s", err, output)
+			}
+			assertContents(t, installed, original)
+			assertSavedWatch(t)
+			if !bytes.Contains(manage(t, "Status"), []byte(watchdir)) {
+				t.Fatal("Upgrade failure lost preferences")
+			}
+			if _, err := os.Stat(serviceLog + ".loaded"); err != nil {
+				t.Fatalf("Previous service was not restarted: %v", err)
+			}
+		})
+	}
+	t.Run("MigrateScriptManagedInstallation", func(t *testing.T) {
+		var previous struct {
+			PathAdded bool `json:"path_added"`
+		}
+		requireSuccess(t, json.Unmarshal(readFile(t, filepath.Join(state, "installation.json")), &previous))
+		legacyManager := "manage.sh"
+		if runtime.GOOS == "windows" {
+			legacyManager = "manage.ps1"
+			data, err := json.Marshal(map[string]any{"WatchDir": watchdir, "InstallDir": bindir, "PathAdded": previous.PathAdded, "Installed": true})
+			requireSuccess(t, err)
+			writeFile(t, filepath.Join(state, "settings.json"), append([]byte{0xef, 0xbb, 0xbf}, data...), 0600)
+		} else {
+			writeFile(t, filepath.Join(state, "watch-dir"), []byte(watchdir+"\n"), 0600)
+			writeFile(t, filepath.Join(state, "install-dir"), []byte(bindir+"\n"), 0600)
+		}
+		writeFile(t, filepath.Join(state, legacyManager), []byte("obsolete manager"), 0600)
+		requireSuccess(t, os.Remove(filepath.Join(state, "installation.json")))
+		requireSuccess(t, os.Remove(filepath.Join(state, "config.json")))
+		if output, err := runBootstrap(t); err != nil {
+			t.Fatalf("Migration: %v\n%s", err, output)
+		}
+		assertSavedWatch(t)
+		assertContents(t, installed, original)
+		if _, err := os.Stat(filepath.Join(state, legacyManager)); !os.IsNotExist(err) {
+			t.Fatalf("Obsolete management script remains after migration: %v", err)
+		}
+	})
 	t.Run("ReinstallPreservesSettings", func(t *testing.T) {
 		writeFile(t, checksums, []byte(digest+"  "+archiveName+"\n"), 0600)
-		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-		defer cancel()
-		var cmd *exec.Cmd
-		if runtime.GOOS == "windows" {
-			cmd = powershellCommand(ctx, "& "+psQuote(filepath.Join(repo, "scripts", "install.ps1"))+" -ReleaseBaseUrl "+psQuote(server.URL), env)
-		} else {
-			cmd = exec.CommandContext(ctx, "sh", filepath.Join(repo, "scripts", "install.sh"))
-			cmd.Env = env
-		}
-		output, err := cmd.CombinedOutput()
+		output, err := runBootstrap(t)
 		if err != nil {
 			t.Fatalf("Reinstall: %v\n%s", err, output)
 		}
@@ -409,9 +487,10 @@ esac
 		writeFile(t, kept, contents, 0600)
 		manage(t, "Uninstall")
 		assertContents(t, kept, contents)
-		if _, err := os.Stat(installed); !os.IsNotExist(err) {
-			t.Fatalf("Executable remains after uninstall: %v", err)
-		}
+		waitFor(t, "uninstall executable removal", func() bool {
+			_, err := os.Stat(installed)
+			return os.IsNotExist(err)
+		})
 		if runtime.GOOS == "windows" {
 			powershell(t, windowsTaskIdentity+`if (Get-ScheduledTask | Where-Object { $_.TaskName -eq $taskName }) { throw 'Task remains after uninstall' }`)
 		} else {

@@ -36,57 +36,42 @@ The installer adds FSClip to your user PATH and starts it in the background. A s
 
 ## Configuration and management
 
-Installation uses `~/copy-to-clipboard` by default. The installer saves a local
-management script, so configuration, status, and uninstall work without a network
-connection. Reinstalling preserves the saved watched folder and installation path.
-
-### macOS
+Installation uses `~/copy-to-clipboard` by default. Change the folder after
+installation:
 
 ```bash
-manager="$HOME/Library/Application Support/fs-clip/manage.sh"
-sh "$manager" configure --watch-dir '/path/to/clipboard'
-sh "$manager" status
-# When you want to remove FSClip:
-sh "$manager" uninstall
+fs-clip configure --watch-dir '/path/to/clipboard'
 ```
 
-### Linux
-
-```bash
-manager="${XDG_CONFIG_HOME:-$HOME/.config}/fs-clip/manage.sh"
-sh "$manager" configure --watch-dir '/path/to/clipboard'
-sh "$manager" status
-# When you want to remove FSClip:
-sh "$manager" uninstall
-```
-
-### Windows
+On Windows, use a Windows path, for example:
 
 ```powershell
-$manager = Join-Path $env:LOCALAPPDATA 'fs-clip\manage.ps1'
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$manager" Configure -WatchDir 'C:\Users\YourName\Clipboard'
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$manager" Status
-# When you want to remove FSClip:
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$manager" Uninstall
+fs-clip configure --watch-dir 'C:\Users\YourName\Clipboard'
 ```
 
-The Windows commands set execution policy for that process only, so local scripts
-can run without changing your saved PowerShell execution policy.
+Check whether FSClip is running or uninstall it:
 
-Changing the watched folder restarts the background worker. If activation fails,
-the manager attempts to restore the previous configuration. Status reports the OS
-service or task state; it does not test clipboard access.
+```bash
+fs-clip status
+fs-clip uninstall
+```
 
-Uninstall stops FSClip, removes automatic startup and the executable, and on
-Windows removes the user PATH entry only if the manager added it. Watched files,
-preferences, logs, and the management script are retained. Repeating uninstall is
-safe. Installers created before saved preferences were introduced cannot preserve
-a custom folder automatically; configure the folder again after the first upgrade.
+Open a new terminal after installation for Windows PATH changes to take effect.
+On macOS and Linux, if `fs-clip` is not on your PATH, use `~/.local/bin/fs-clip`
+instead, or add `~/.local/bin` to your PATH. The installer prints the executable's
+full path when using a custom installation directory.
 
-The installers still accept explicit binary and watch-directory overrides for
-existing automation (`-b` / `-w` on Unix, `-InstallDir` / `-WatchDir` on Windows).
-Prefer the local management script for subsequent configuration changes. Uninstall
-before moving an existing installation to a different binary directory.
+Reinstalling preserves the watched folder and installation path. Changing the
+watched folder restarts FSClip; a failed change restores the previous settings.
+Configuration and uninstall work offline.
+
+Uninstall stops FSClip and removes automatic startup and the installed executable.
+Watched files, preferences, and logs are preserved. On Windows, the executable
+removes itself shortly after the uninstall command exits.
+
+For a custom binary directory, use `-b DIRECTORY` with the Unix installer or
+`-InstallDir DIRECTORY` with the PowerShell installer. Uninstall before moving an
+existing installation to another directory.
 
 ## How It Works
 
@@ -107,7 +92,7 @@ Files that cannot be read or copied, and files with unsupported content types, a
 Requires Go 1.27.3 or newer and a graphical desktop session for clipboard access.
 
 ```bash
-make build
+CGO_ENABLED=0 go build .
 go test -race ./...
 go vet ./...
 ```
@@ -115,9 +100,8 @@ go vet ./...
 Race-enabled tests require a C compiler.
 
 Releases wait for the shared test workflow, then one Ubuntu job runs GoReleaser
-to build and publish all six release targets. Archives include the platform
-management script and, on Unix, service templates; they share one checksum manifest. The archive checksum covers the management script
-as well as the executable.
+to build and publish all six release targets. Each archive contains the executable,
+README, and license; releases include a shared checksum manifest.
 
 ## Clipboard integration tests
 
@@ -146,7 +130,8 @@ the same filesystem.
 The same jobs exercise the installers against a local release server: latest and
 explicit tags, repeat installs, custom paths, and invalid or missing checksums.
 Management coverage checks offline configuration and status, saved settings across
-updates, and uninstall without deleting watched files.
+updates, recovery from failed upgrades and configuration changes, and uninstall
+without deleting watched files.
 They then run the clipboard suite against the installed executable. On macOS and
 Linux, service-manager commands are recorded and generated service files are checked.
 On Windows, tests register the real login task and verify its settings, repeat
