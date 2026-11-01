@@ -42,6 +42,8 @@ archives:
       - LICENSE.txt
       - README.md
       - dev.nils-silbernagel.fs-clip.service
+      - src: scripts/manage.sh
+        strip_parent: true
 
   - id: darwin
     ids:
@@ -51,6 +53,8 @@ archives:
       - LICENSE.txt
       - README.md
       - dev.nils-silbernagel.fs-clip.plist
+      - src: scripts/manage.sh
+        strip_parent: true
 
   - id: windows
     ids:
@@ -59,6 +63,8 @@ archives:
     files:
       - LICENSE.txt
       - README.md
+      - src: scripts/manage.ps1
+        strip_parent: true
 
 checksum:
   name_template: '{{ .ProjectName }}_{{ .Version }}_checksums.txt'

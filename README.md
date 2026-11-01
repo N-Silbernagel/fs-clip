@@ -19,7 +19,7 @@ Some tools can only emit output as files. If your next step is to paste that out
 ### macOS / Linux
 
 ```bash
-sh -c "$(curl -fsLS https://github.com/N-Silbernagel/fs-clip/releases/latest/download/install.sh)"
+sh -c 'installer=$(curl -fsSL https://github.com/N-Silbernagel/fs-clip/releases/latest/download/install.sh) && sh -c "$installer"'
 ```
 
 On Linux, the installer sets up a systemd user service. Requires a graphical desktop session.
@@ -34,33 +34,59 @@ Run in PowerShell:
 
 The installer adds FSClip to your user PATH and starts it in the background. A scheduled task starts it automatically when you log in, without administrator privileges.
 
-To stop it and remove automatic startup, run in PowerShell:
+## Configuration and management
 
-```powershell
-$taskName = 'dev.nils-silbernagel.fs-clip-' + [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-Stop-ScheduledTask -TaskName $taskName
-Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
-```
+Installation uses `~/copy-to-clipboard` by default. The installer saves a local
+management script, so configuration, status, and uninstall work without a network
+connection. Reinstalling preserves the saved watched folder and installation path.
 
-To uninstall completely, also delete `%LOCALAPPDATA%\Programs\fs-clip` (or your custom installation directory) and remove its entry from your user PATH.
-
-## Configuration
-
-To watch a different directory, pass it to the installer. Run the installer again to update an existing installation.
-
-### macOS / Linux
+### macOS
 
 ```bash
-sh -c "$(curl -fsLS https://github.com/N-Silbernagel/fs-clip/releases/latest/download/install.sh)" -- -w '/path/to/clipboard'
+manager="$HOME/Library/Application Support/fs-clip/manage.sh"
+sh "$manager" configure --watch-dir '/path/to/clipboard'
+sh "$manager" status
+# When you want to remove FSClip:
+sh "$manager" uninstall
+```
+
+### Linux
+
+```bash
+manager="${XDG_CONFIG_HOME:-$HOME/.config}/fs-clip/manage.sh"
+sh "$manager" configure --watch-dir '/path/to/clipboard'
+sh "$manager" status
+# When you want to remove FSClip:
+sh "$manager" uninstall
 ```
 
 ### Windows
 
-Run in PowerShell:
-
 ```powershell
-& ([scriptblock]::Create((Invoke-RestMethod 'https://github.com/N-Silbernagel/fs-clip/releases/latest/download/install.ps1'))) -WatchDir 'C:\Users\YourName\Clipboard'
+$manager = Join-Path $env:LOCALAPPDATA 'fs-clip\manage.ps1'
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$manager" Configure -WatchDir 'C:\Users\YourName\Clipboard'
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$manager" Status
+# When you want to remove FSClip:
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$manager" Uninstall
 ```
+
+The Windows commands set execution policy for that process only, so local scripts
+can run without changing your saved PowerShell execution policy.
+
+Changing the watched folder restarts the background worker. If activation fails,
+the manager attempts to restore the previous configuration. Status reports the OS
+service or task state; it does not test clipboard access.
+
+Uninstall stops FSClip, removes automatic startup and the executable, and on
+Windows removes the user PATH entry only if the manager added it. Watched files,
+preferences, logs, and the management script are retained. Repeating uninstall is
+safe. Installers created before saved preferences were introduced cannot preserve
+a custom folder automatically; configure the folder again after the first upgrade.
+
+The installers still accept explicit binary and watch-directory overrides for
+existing automation (`-b` / `-w` on Unix, `-InstallDir` / `-WatchDir` on Windows).
+Prefer the local management script for subsequent configuration changes. Uninstall
+before moving an existing installation to a different binary directory.
 
 ## How It Works
 
@@ -89,8 +115,9 @@ go vet ./...
 Race-enabled tests require a C compiler.
 
 Releases wait for the shared test workflow, then one Ubuntu job runs GoReleaser
-to build and publish all six release targets. Archives retain their platform-specific
-service files and share one checksum manifest.
+to build and publish all six release targets. Archives include the platform
+management script and, on Unix, service templates; they share one checksum manifest. The archive checksum covers the management script
+as well as the executable.
 
 ## Clipboard integration tests
 
@@ -118,6 +145,8 @@ the same filesystem.
 
 The same jobs exercise the installers against a local release server: latest and
 explicit tags, repeat installs, custom paths, and invalid or missing checksums.
+Management coverage checks offline configuration and status, saved settings across
+updates, and uninstall without deleting watched files.
 They then run the clipboard suite against the installed executable. On macOS and
 Linux, service-manager commands are recorded and generated service files are checked.
 On Windows, tests register the real login task and verify its settings, repeat

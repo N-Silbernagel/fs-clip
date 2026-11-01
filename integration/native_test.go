@@ -46,7 +46,7 @@ func powershellArgs(script string) []string {
 	for i, word := range words {
 		binary.LittleEndian.PutUint16(data[i*2:], word)
 	}
-	return []string{"-NoProfile", "-NonInteractive", "-STA", "-OutputFormat", "Text", "-EncodedCommand", base64.StdEncoding.EncodeToString(data)}
+	return []string{"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-STA", "-OutputFormat", "Text", "-EncodedCommand", base64.StdEncoding.EncodeToString(data)}
 }
 
 func powershellCommand(ctx context.Context, script string, env []string) *exec.Cmd {

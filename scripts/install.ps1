@@ -31,12 +31,12 @@ param (
     [Parameter(Mandatory = $false)]
     [Alias('w')]
     [string]
-    $WatchDir = (Join-Path -Path $HOME -ChildPath 'copy-to-clipboard'),
+    $WatchDir = '',
 
     [Parameter(Mandatory = $false)]
     [Alias('i')]
     [string]
-    $InstallDir = $(if ($env:LOCALAPPDATA) { Join-Path -Path $env:LOCALAPPDATA -ChildPath 'Programs\fs-clip' } else { Join-Path -Path $HOME -ChildPath '.local/bin/fs-clip' }),
+    $InstallDir = '',
 
     [Parameter(Mandatory = $false)]
     [Alias('t')]
@@ -66,27 +66,6 @@ function Invoke-CleanUp ($directory) {
     if (($null -ne $directory) -and (Test-Path -Path $directory)) {
         Write-Debug "removing ${directory}"
         Remove-Item -Path $directory -Recurse -Force
-    }
-}
-
-function Add-PathEntryIfMissing ([string]$entry) {
-    $userPath = [System.Environment]::GetEnvironmentVariable('Path', 'User')
-    $parts = @()
-    if ($userPath) {
-        $parts = $userPath -split ';' | Where-Object { $_ }
-    }
-    if (-not ($parts -contains $entry)) {
-        $newParts = @($parts + $entry)
-        $newUserPath = ($newParts -join ';')
-        [System.Environment]::SetEnvironmentVariable('Path', $newUserPath, 'User')
-    }
-
-    $processParts = @()
-    if ($env:Path) {
-        $processParts = $env:Path -split ';' | Where-Object { $_ }
-    }
-    if (-not ($processParts -contains $entry)) {
-        $env:Path = (($processParts + $entry) -join ';')
     }
 }
 
@@ -216,10 +195,29 @@ if ($EnableDebug) {
     $script:DebugPreference = 'Continue'
 }
 
+$stateDir = Join-Path $env:LOCALAPPDATA 'fs-clip'
+$settingsPath = Join-Path $stateDir 'settings.json'
 $tempDir = ''
+$installLock = $null
 $BaseUrl = $ReleaseBaseUrl.TrimEnd('/')
 
 try {
+    [System.IO.Directory]::CreateDirectory($stateDir) | Out-Null
+    $installLock = [System.IO.File]::Open((Join-Path $stateDir 'management.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
+    $settings = $null
+    if (Test-Path -LiteralPath $settingsPath) {
+        $settings = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
+    }
+    if (-not $InstallDir) {
+        $InstallDir = if ($settings) { $settings.InstallDir } else { Join-Path $env:LOCALAPPDATA 'Programs\fs-clip' }
+    }
+    if (-not $WatchDir) {
+        $WatchDir = if ($settings) { $settings.WatchDir } else { Join-Path $HOME 'copy-to-clipboard' }
+    }
+
+    if ($settings -and $settings.Installed -and $settings.InstallDir -ne $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($InstallDir)) {
+        throw 'Uninstall the existing installation before changing its binary directory.'
+    }
 
     # convert $WatchDir to an absolute path
     $WatchDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($WatchDir)
@@ -278,52 +276,19 @@ try {
     $binary = Join-Path -Path $InstallDir -ChildPath $binaryFilename
     Write-DebugVariable 'binary'
 
-    $userId = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-    $taskName = "dev.nils-silbernagel.fs-clip-${userId}"
-    $existingTask = Get-ScheduledTask | Where-Object { $_.TaskPath -eq '\' -and $_.TaskName -eq $taskName }
-    if ($existingTask) {
-        Stop-ScheduledTask -TaskName $taskName
-        $deadline = [DateTime]::UtcNow.AddSeconds(30)
-        while ((Get-ScheduledTask -TaskName $taskName).State -eq 'Running') {
-            if ([DateTime]::UtcNow -ge $deadline) {
-                throw 'Timed out stopping the existing FSClip task.'
-            }
-            Start-Sleep -Milliseconds 100
-        }
-    }
-
-    # Migrate instances started by the previous foreground installer.
-    $sessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
-    foreach ($process in @(Get-Process -Name fs-clip -ErrorAction SilentlyContinue)) {
-        if ($process.SessionId -eq $sessionId -and $process.Path -eq $binary) {
-            Stop-Process -InputObject $process -Force
-            if (-not $process.WaitForExit(30000)) {
-                throw 'Timed out stopping the existing FSClip process.'
-            }
-        }
-    }
-
-    Move-Item -Path $tempBinaryPath -Destination $binary -Force
-    Write-Information "installed ${binary}"
-
-    Add-PathEntryIfMissing $InstallDir
-    Write-Information "ensured $InstallDir is in user PATH"
-
-    # Windows command-line quoting doubles trailing backslashes before a quote.
-    $quotedWatchDir = '"' + ($WatchDir -replace '(\\*)"', '$1$1\"' -replace '(\\+)$', '$1$1') + '"'
-    $action = New-ScheduledTaskAction -Execute $binary -Argument "--watch-dir $quotedWatchDir"
-    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $userId
-    $principal = New-ScheduledTaskPrincipal -UserId $userId -LogonType Interactive -RunLevel Limited
-    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
-        -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) `
-        -MultipleInstances IgnoreNew
-    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger `
-        -Principal $principal -Settings $settings -Force | Out-Null
-    Write-Information "registered login task ${taskName}"
-
-    Start-ScheduledTask -TaskName $taskName
-    Write-Information 'started FSClip in the background'
+    $manager = Join-Path $tempDir 'manage.ps1'
+    if (-not (Test-Path -LiteralPath $manager)) { throw 'Release archive is missing manage.ps1.' }
+    & ([scriptblock]::Create((Get-Content -LiteralPath $manager -Raw))) Stop -InstallDir $InstallDir -InstallLockHeld
+    Move-Item -LiteralPath $tempBinaryPath -Destination $binary -Force
+    [System.IO.Directory]::CreateDirectory($stateDir) | Out-Null
+    $localManager = Join-Path $stateDir 'manage.ps1'
+    Copy-Item -LiteralPath $manager -Destination $localManager -Force
+    & ([scriptblock]::Create((Get-Content -LiteralPath $localManager -Raw))) Setup -InstallDir $InstallDir -WatchDir $WatchDir -InstallLockHeld
+    Write-Information "Installed FSClip. Management script: $localManager"
+    Write-Information "Watching: $WatchDir"
+    Write-Information 'Use the management script to Configure, check Status, or Uninstall.'
 
 } finally {
+    if ($installLock) { $installLock.Dispose() }
     Invoke-CleanUp $tempDir
 }

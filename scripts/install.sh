@@ -14,8 +14,13 @@ WATCH_DIR=""
 RELEASE_BASE_URL="${FS_CLIP_RELEASE_BASE_URL:-https://github.com/N-Silbernagel/fs-clip/releases}"
 
 tmpdir="$(mktemp -d)"
-trap 'rm -rf -- "${tmpdir}"' EXIT
-trap 'exit' INT TERM
+lock_owned=0
+cleanup() {
+  rm -rf -- "$tmpdir"
+  if [ "$lock_owned" -eq 1 ]; then rmdir "$STATE_DIR/lock"; fi
+}
+trap cleanup EXIT
+trap 'exit 1' INT TERM
 
 usage() {
   this="${1}"
@@ -39,6 +44,24 @@ main() {
   GOARCH="$(get_goarch)"
   check_goos_goarch "${GOOS}/${GOARCH}"
 
+  case "$GOOS" in
+    darwin) STATE_DIR="$HOME/Library/Application Support/fs-clip" ;;
+    linux) STATE_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/fs-clip" ;;
+  esac
+  mkdir -p "$STATE_DIR"
+  chmod 700 "$STATE_DIR"
+  if ! mkdir "$STATE_DIR/lock" 2>/dev/null; then
+    log_err "another installation or management operation is running (lock: $STATE_DIR/lock)"
+    exit 1
+  fi
+  lock_owned=1
+  if [ -z "$BINDIR" ] && [ -f "$STATE_DIR/install-dir" ]; then
+    IFS= read -r BINDIR < "$STATE_DIR/install-dir"
+  fi
+  if [ -z "$WATCH_DIR" ] && [ -f "$STATE_DIR/watch-dir" ]; then
+    IFS= read -r WATCH_DIR < "$STATE_DIR/watch-dir"
+  fi
+
   if [ -z "${BINDIR}" ]; then
     BINDIR="${HOME}/.local/bin"
   fi
@@ -46,6 +69,11 @@ main() {
   if [ -z "${WATCH_DIR}" ]; then
     WATCH_DIR="${HOME}/copy-to-clipboard"
   fi
+
+  case "$BINDIR" in /*) ;; *) BINDIR="$PWD/$BINDIR" ;; esac
+  case "$WATCH_DIR" in /*) ;; *) WATCH_DIR="$PWD/$WATCH_DIR" ;; esac
+  case "$BINDIR$WATCH_DIR" in *'
+'*) echo 'Paths containing newlines are unsupported' >&2; exit 1 ;; esac
 
   TAG="$(real_tag "${TAGARG}")"
   VERSION="${TAG#v}"
@@ -80,89 +108,44 @@ main() {
 
   (cd -- "${tmpdir}" && untar "${TARBALL}")
 
+  # Validate the management payload before replacing an existing executable.
+  if [ ! -f "$tmpdir/manage.sh" ]; then
+    log_err 'release archive is missing manage.sh; use the installer published with that release'
+    return 1
+  fi
+  case "$GOOS" in
+    darwin) template=dev.nils-silbernagel.fs-clip.plist ;;
+    linux) template=dev.nils-silbernagel.fs-clip.service ;;
+  esac
+  if [ ! -f "$tmpdir/$template" ]; then
+    log_err "release archive is missing $template"
+    return 1
+  fi
+  sh -n "$tmpdir/manage.sh"
+  if [ -f "$STATE_DIR/install-dir" ]; then
+    IFS= read -r previous_bindir < "$STATE_DIR/install-dir"
+    if [ "$previous_bindir" != "$BINDIR" ]; then
+      log_err 'uninstall the existing installation before changing its binary directory'
+      exit 1
+    fi
+  fi
+
   # install binary
   echo "Copying fs-clip to ${BINDIR}"
   if mkdir -p "${BINDIR}" 2>/dev/null && install -m 0755 "${tmpdir}/fs-clip" "${BINDIR}/.fs-clip-$$" 2>/dev/null && mv -f "${BINDIR}/.fs-clip-$$" "${BINDIR}/fs-clip" 2>/dev/null; then
     :
-  elif is_command sudo; then
-    log_info "installing to ${BINDIR} requires elevated permissions"
-    sudo mkdir -p "${BINDIR}"
-    sudo install -m 0755 "${tmpdir}/fs-clip" "${BINDIR}/.fs-clip-$$"
-    sudo mv -f "${BINDIR}/.fs-clip-$$" "${BINDIR}/fs-clip"
   else
     log_err "unable to install to ${BINDIR}; choose a writable path with -b"
     return 1
   fi
 
-  # add service configuration
-  if [ "${GOOS}" = "darwin" ]; then
-    install_mac
-  fi
-
-  if [ "${GOOS}" = "linux" ]; then
-      install_linux
-  fi
-}
-
-escape_sed() {
-  printf '%s' "${1}" | sed 's/[\\&|]/\\&/g'
-}
-
-escape_xml() {
-  printf '%s' "${1}" | sed 's/\&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'
-}
-
-escape_systemd() {
-  printf '%s' "${1}" | sed 's/[\\"]/\\&/g; s/%/%%/g'
-}
-
-install_linux() {
-  SYSTEMD_DEFINITIONS="${HOME}/.config/systemd/user"
-  COMMAND_LABEL="dev.nils-silbernagel.fs-clip"
-  SERVICE="${COMMAND_LABEL}.service"
-
-  echo "Copying service to ${SYSTEMD_DEFINITIONS}"
-  # TODO make logging configurable in linux
-  mkdir -p "${SYSTEMD_DEFINITIONS}"
-  sed "s|{WATCH_DIR}|$(escape_sed "$(escape_systemd "${WATCH_DIR}")")|g" "${tmpdir}/${SERVICE}" \
-    | sed "s|{BINARY_PATH}|$(escape_sed "$(escape_systemd "${BINDIR}/fs-clip")")|g" \
-    > "${SYSTEMD_DEFINITIONS}/${SERVICE}"
-  chmod 0644 "${SYSTEMD_DEFINITIONS}/${SERVICE}"
-
-  echo "Unloading systemd service"
-  if systemctl --user cat "${SERVICE}"; then \
-      echo "Unloading current instance of ${SERVICE}"; \
-      systemctl --user disable --now "${SERVICE}"; \
-  fi
-
-  echo "Loading systemd service"
-  systemctl --user daemon-reload
-  systemctl --user enable --now "${SERVICE}"
-}
-
-install_mac() {
-  LAUNCHAGENTS="${HOME}/Library/LaunchAgents"
-  LOGDIR="${HOME}/Library/Logs/fs-clip"
-  COMMAND_LABEL="dev.nils-silbernagel.fs-clip"
-  PLIST="${COMMAND_LABEL}.plist"
-
-  mkdir -p "${LAUNCHAGENTS}" "${LOGDIR}"
-
-  echo "Copying plist to ${LAUNCHAGENTS}"
-  sed "s|{USER_HOME}|$(escape_sed "$(escape_xml "${HOME}")")|g" "${tmpdir}/${PLIST}" \
-    | sed "s|{WATCH_DIR}|$(escape_sed "$(escape_xml "${WATCH_DIR}")")|g" \
-    | sed "s|{BINARY_PATH}|$(escape_sed "$(escape_xml "${BINDIR}/fs-clip")")|g" \
-    > "${LAUNCHAGENTS}/${PLIST}"
-  chmod 0644 "${LAUNCHAGENTS}/${PLIST}"
-
-  echo "Unloading launchd plist"
-  if launchctl list | grep -q "${COMMAND_LABEL}"; then \
-      echo "Unloading current instance of ${PLIST}"; \
-      launchctl unload "${LAUNCHAGENTS}/${PLIST}"; \
-  fi
-
-  echo "Loading launchd plist"
-  launchctl load "${LAUNCHAGENTS}/${PLIST}"
+  install -m 0700 "${tmpdir}/manage.sh" "$STATE_DIR/manage.sh.new"
+  mv -f "$STATE_DIR/manage.sh.new" "$STATE_DIR/manage.sh"
+  install -m 0600 "$tmpdir/$template" "$STATE_DIR/$template.new"
+  mv -f "$STATE_DIR/$template.new" "$STATE_DIR/$template"
+  FS_CLIP_INSTALL_LOCK=1 sh "$STATE_DIR/manage.sh" setup "$BINDIR" "$WATCH_DIR"
+  printf '\nInstalled FSClip. Management script: %s/manage.sh\n' "$STATE_DIR"
+  printf 'Watching: %s\nUse the management script to configure, check status, or uninstall.\n' "$WATCH_DIR"
 }
 
 parse_args() {
