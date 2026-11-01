@@ -322,6 +322,9 @@ esac
 		{"RejectMissingChecksum", digest + "  unrelated-archive.tar.gz\n"},
 	} {
 		if !t.Run(test.name, func(t *testing.T) {
+			t.Cleanup(func() {
+				writeFile(t, checksums, []byte(digest+"  "+archiveName+"\n"), 0600)
+			})
 			writeFile(t, checksums, []byte(test.checksum), 0600)
 			install(t, "latest", false)
 			assertContents(t, installed, original)
@@ -470,7 +473,6 @@ esac
 		}
 	})
 	t.Run("ReinstallPreservesSettings", func(t *testing.T) {
-		writeFile(t, checksums, []byte(digest+"  "+archiveName+"\n"), 0600)
 		output, err := runBootstrap(t)
 		if err != nil {
 			t.Fatalf("Reinstall: %v\n%s", err, output)
