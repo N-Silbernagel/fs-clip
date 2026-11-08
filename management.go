@@ -22,10 +22,17 @@ type preferences struct {
 	WatchDir string `json:"watch_dir"`
 }
 
+type installationMethod string
+
+const (
+	installationMethodScript installationMethod = "script"
+	installationMethodInno   installationMethod = "inno"
+)
+
 type installation struct {
-	Binary    string `json:"binary"`
-	Method    string `json:"method"`
-	PathAdded bool   `json:"path_added,omitempty"`
+	Binary    string             `json:"binary"`
+	Method    installationMethod `json:"method"`
+	PathAdded bool               `json:"path_added,omitempty"`
 }
 
 type manager struct {
@@ -38,17 +45,20 @@ func managementCommand(args []string, out io.Writer) (bool, error) {
 		return false, nil
 	}
 	command := args[0]
-	if command != "install" && command != "configure" && command != "status" && command != "uninstall" {
+	if command != "install" && command != "activate" && command != "configure" && command != "status" && command != "deactivate" && command != "uninstall" {
 		return true, fmt.Errorf("unknown command %q; use fs-clip --help", command)
 	}
 	flags := flag.NewFlagSet(command, flag.ContinueOnError)
 	flags.SetOutput(out)
-	var binDir, watchDir string
+	var binDir, watchDir, methodName string
 	if command == "install" {
 		flags.StringVar(&binDir, "bin-dir", "", "Installation directory (defaults to your user binary directory)")
 	}
-	if command == "configure" {
+	if command == "configure" || command == "activate" {
 		flags.StringVar(&watchDir, "watch-dir", "", "Directory to watch")
+	}
+	if command == "activate" || command == "deactivate" {
+		flags.StringVar(&methodName, "method", "", "External installer method")
 	}
 	if err := flags.Parse(args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -61,6 +71,10 @@ func managementCommand(args []string, out io.Writer) (bool, error) {
 	}
 	if command == "configure" && watchDir == "" {
 		return true, errors.New("use fs-clip configure --watch-dir DIRECTORY")
+	}
+	method := installationMethod(methodName)
+	if (command == "activate" || command == "deactivate") && method != installationMethodInno {
+		return true, errors.New("installer method must be inno")
 	}
 	dir, err := stateDirectory()
 	if err != nil {
@@ -78,10 +92,14 @@ func managementCommand(args []string, out io.Writer) (bool, error) {
 	switch command {
 	case "install":
 		err = m.install(binDir)
+	case "activate":
+		err = m.activate(method, watchDir)
 	case "configure":
 		err = m.configure(watchDir)
 	case "status":
 		err = m.status()
+	case "deactivate":
+		err = m.deactivate(method)
 	case "uninstall":
 		err = m.uninstall()
 	}
@@ -127,8 +145,8 @@ func (m manager) loadInstallation() (*installation, error) {
 	if !found {
 		return nil, nil
 	}
-	if inst.Method != "script" {
-		return nil, errors.New("this installation is managed externally; use its package manager")
+	if inst.Method != installationMethodScript && inst.Method != installationMethodInno {
+		return nil, fmt.Errorf("unsupported installation method %q", inst.Method)
 	}
 	if !filepath.IsAbs(inst.Binary) || filepath.Base(inst.Binary) != executableName() || !validPath(inst.Binary) {
 		return nil, errors.New("invalid saved executable path")
@@ -194,6 +212,9 @@ func (m manager) install(binDir string) (err error) {
 	if err != nil {
 		return err
 	}
+	if previous != nil && previous.Method != installationMethodScript {
+		return errors.New("this installation is managed externally; use its package manager")
+	}
 	if binDir == "" {
 		if previous != nil {
 			binDir = filepath.Dir(previous.Binary)
@@ -229,7 +250,7 @@ func (m manager) install(binDir string) (err error) {
 		}
 		return err
 	}
-	inst := installation{Binary: target, Method: "script"}
+	inst := installation{Binary: target, Method: installationMethodScript}
 	if previous != nil {
 		inst.PathAdded = previous.PathAdded
 	}
@@ -265,6 +286,75 @@ func (m manager) install(binDir string) (err error) {
 	}
 	success = true
 	fmt.Fprintf(m.out, "Installed %s\nWatching: %s\nUse fs-clip configure, fs-clip status, or fs-clip uninstall.\n", target, p.WatchDir)
+	return nil
+}
+
+func (m manager) activate(method installationMethod, watchDir string) (err error) {
+	previousInstallation, err := m.loadInstallation()
+	if err != nil {
+		return err
+	}
+	if previousInstallation != nil && previousInstallation.Method != method {
+		return errors.New("another installation method already manages FSClip; uninstall it first")
+	}
+	previousPreferences, err := m.loadPreferences()
+	if err != nil {
+		return err
+	}
+	p := previousPreferences
+	if watchDir != "" {
+		p.WatchDir, err = normalizedPath(watchDir)
+		if err != nil {
+			return err
+		}
+	}
+	if err := os.MkdirAll(p.WatchDir, 0750); err != nil {
+		return err
+	}
+	binary, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	binary, err = normalizedPath(binary)
+	if err != nil {
+		return err
+	}
+	inst := installation{Binary: binary, Method: method}
+	if previousInstallation != nil {
+		if err := platformStop(previousInstallation.Binary); err != nil {
+			return err
+		}
+	} else if err := platformStop(binary); err != nil {
+		return err
+	}
+	activationAttempted := false
+	preferencesSaved := false
+	defer func() {
+		if err == nil {
+			return
+		}
+		if activationAttempted {
+			err = errors.Join(err, platformRemoveStartup(binary))
+		}
+		if preferencesSaved {
+			err = errors.Join(err, writeJSON(filepath.Join(m.dir, "config.json"), previousPreferences))
+		}
+		if previousInstallation != nil {
+			err = errors.Join(err, platformActivate(*previousInstallation, previousPreferences))
+		}
+	}()
+	activationAttempted = true
+	if err = platformActivate(inst, p); err != nil {
+		return fmt.Errorf("start FSClip: %w", err)
+	}
+	if err = writeJSON(filepath.Join(m.dir, "config.json"), p); err != nil {
+		return err
+	}
+	preferencesSaved = true
+	if err = writeJSON(filepath.Join(m.dir, "installation.json"), inst); err != nil {
+		return err
+	}
+	fmt.Fprintf(m.out, "Activated %s\nWatching: %s\n", binary, p.WatchDir)
 	return nil
 }
 
@@ -320,11 +410,34 @@ func (m manager) status() error {
 		return nil
 	}
 	fmt.Fprintf(m.out, "Executable: %s\n", inst.Binary)
+	fmt.Fprintf(m.out, "Installation method: %s\n", inst.Method)
 	output, err := platformStatus()
 	if err != nil {
 		return err
 	}
 	fmt.Fprint(m.out, output)
+	return nil
+}
+
+func (m manager) deactivate(method installationMethod) error {
+	inst, err := m.loadInstallation()
+	if err != nil {
+		return err
+	}
+	if inst == nil {
+		fmt.Fprintln(m.out, "FSClip is already deactivated.")
+		return nil
+	}
+	if inst.Method != method {
+		return errors.New("this installation belongs to another installer")
+	}
+	if err := platformRemoveStartup(inst.Binary); err != nil {
+		return err
+	}
+	if err := removeIfExists(filepath.Join(m.dir, "installation.json")); err != nil {
+		return err
+	}
+	fmt.Fprintln(m.out, "FSClip deactivated. Preferences and watched files were preserved.")
 	return nil
 }
 
@@ -336,6 +449,9 @@ func (m manager) uninstall() error {
 	if inst == nil {
 		fmt.Fprintln(m.out, "No managed installation found; nothing to uninstall.")
 		return nil
+	}
+	if inst.Method != installationMethodScript {
+		return errors.New("this installation is managed externally; use its package manager")
 	}
 	if err := platformRemoveStartup(inst.Binary); err != nil {
 		return err

@@ -85,6 +85,8 @@ func TestManagementRejectsInvalidCommands(t *testing.T) {
 		{"unknown"}, {"configure"}, {"configure", "--watch-dir", "x", "unexpected"},
 		{"install", "--watch-dir", "x"}, {"configure", "--watch-dir", "bad\npath"},
 		{"configure", "--watch-dir", string([]byte{0xff})}, {"status", "unexpected"}, {"uninstall", "--purge"},
+		{"activate"}, {"activate", "--method", "unknown"}, {"activate", "--method", "inno", "unexpected"},
+		{"deactivate"}, {"deactivate", "--method", "unknown"}, {"deactivate", "--method", "inno", "unexpected"},
 	} {
 		if handled, err := managementCommand(args, io.Discard); !handled || err == nil {
 			t.Errorf("Arguments %v: handled=%t, error=%v", args, handled, err)
@@ -139,10 +141,24 @@ func TestExecutableReplacementRollback(t *testing.T) {
 
 func TestExternallyManagedInstallationIsProtected(t *testing.T) {
 	dir := managementEnvironment(t)
-	if err := writeJSON(filepath.Join(dir, "installation.json"), installation{Method: "homebrew", Binary: filepath.Join(t.TempDir(), executableName())}); err != nil {
+	want := installation{Method: installationMethodInno, Binary: filepath.Join(t.TempDir(), executableName())}
+	if err := writeJSON(filepath.Join(dir, "installation.json"), want); err != nil {
 		t.Fatal(err)
+	}
+	got, err := (manager{dir: dir, out: io.Discard}).loadInstallation()
+	if err != nil {
+		t.Fatalf("Load externally managed installation: %v", err)
+	}
+	if got == nil || *got != want {
+		t.Fatalf("Loaded installation = %#v, expected %#v", got, want)
 	}
 	if _, err := managementCommand([]string{"uninstall"}, io.Discard); err == nil || !strings.Contains(err.Error(), "package manager") {
 		t.Fatalf("Uninstall did not protect externally managed installation: %v", err)
+	}
+	if _, err := managementCommand([]string{"install"}, io.Discard); err == nil || !strings.Contains(err.Error(), "package manager") {
+		t.Fatalf("Install did not protect externally managed installation: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "installation.json")); err != nil {
+		t.Fatalf("Uninstall changed external installation record: %v", err)
 	}
 }

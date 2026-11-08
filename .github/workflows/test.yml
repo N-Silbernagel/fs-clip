@@ -69,6 +69,21 @@ jobs:
         run: |
           go test -race ./...
           go vet ./...
+      - name: Compile Windows setup executable
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          go build -ldflags '-s -w -H=windowsgui' -o dist/fs-clip.exe .
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path -LiteralPath $iscc)) {
+            choco install innosetup --no-progress -y
+          }
+          & $iscc '/DMyVersion=0.0.0-test' '/DMyArch=amd64' "/DMyBinary=$((Resolve-Path dist/fs-clip.exe).Path)" packaging/windows/fs-clip.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
+          if (-not (Test-Path -LiteralPath dist/fs-clip_0.0.0-test_windows_amd64_setup.exe)) {
+            throw 'Inno Setup did not produce the expected installer.'
+          }
       - name: Linux installation and clipboard integration
         if: runner.os == 'Linux'
         run: env -u WAYLAND_DISPLAY xvfb-run -a go test -race -tags=integration -v -timeout=5m ./integration

@@ -479,4 +479,27 @@ esac
 		}
 		manage(t, "Uninstall")
 	})
+	if runtime.GOOS == "windows" {
+		t.Run("ExternalInstallerLifecycle", func(t *testing.T) {
+			externalWatch := filepath.Join(home, "inno watch & copy")
+			manage(t, "Activate", "--method", "inno", "--watch-dir", externalWatch)
+			assertWindowsTask(t, binary, externalWatch)
+			status := manage(t, "Status")
+			if !bytes.Contains(status, []byte("Installation method: inno")) {
+				t.Fatalf("Status omitted external installation ownership: %s", status)
+			}
+			configuredWatch := filepath.Join(home, "configured inno watch")
+			manage(t, "Configure", "--watch-dir", configuredWatch)
+			assertWindowsTask(t, binary, configuredWatch)
+			if output, err := runManage(t, "Uninstall"); err == nil || !bytes.Contains(output, []byte("package manager")) {
+				t.Fatalf("CLI uninstall changed an externally managed installation: %v\n%s", err, output)
+			}
+			manage(t, "Deactivate", "--method", "inno")
+			if _, err := os.Stat(binary); err != nil {
+				t.Fatalf("Deactivation removed the installer-owned executable: %v", err)
+			}
+			powershell(t, windowsTaskIdentity+`if (Get-ScheduledTask | Where-Object { $_.TaskName -eq $taskName }) { throw 'Task remains after deactivation' }`)
+			manage(t, "Deactivate", "--method", "inno")
+		})
+	}
 }

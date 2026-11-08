@@ -36,3 +36,51 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
+
+  windows-setup:
+    name: Windows setup (${{ matrix.arch }})
+    needs: release
+    runs-on: windows-2025
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - amd64
+          - arm64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download release binary
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = '${{ github.ref_name }}' -replace '^v', ''
+          $archive = "fs-clip_${version}_windows_${{ matrix.arch }}.zip"
+          New-Item -ItemType Directory -Force dist/staging | Out-Null
+          gh release download '${{ github.ref_name }}' --pattern $archive --dir dist
+          Expand-Archive -LiteralPath "dist/$archive" -DestinationPath dist/staging
+
+      - name: Compile setup executable
+        shell: pwsh
+        run: |
+          $version = '${{ github.ref_name }}' -replace '^v', ''
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path -LiteralPath $iscc)) {
+            choco install innosetup --no-progress -y
+          }
+          & $iscc "/DMyVersion=$version" '/DMyArch=${{ matrix.arch }}' "/DMyBinary=$((Resolve-Path dist/staging/fs-clip.exe).Path)" packaging/windows/fs-clip.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
+
+      - name: Upload setup executable
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = '${{ github.ref_name }}' -replace '^v', ''
+          $installer = "dist/fs-clip_${version}_windows_${{ matrix.arch }}_setup.exe"
+          if (-not (Test-Path -LiteralPath $installer)) { throw "Missing installer: $installer" }
+          $checksum = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$checksum  $([IO.Path]::GetFileName($installer))" | Set-Content -NoNewline -Encoding ascii "$installer.sha256"
+          gh release upload '${{ github.ref_name }}' $installer "$installer.sha256"

@@ -26,7 +26,21 @@ On Linux, the installer sets up a systemd user service. Requires a graphical des
 
 ### Windows
 
-Run in PowerShell:
+Download the setup executable for your computer from the
+[latest release](https://github.com/N-Silbernagel/fs-clip/releases/latest):
+
+* `fs-clip_VERSION_windows_amd64_setup.exe` for most Windows computers
+* `fs-clip_VERSION_windows_arm64_setup.exe` for Windows on ARM
+
+The setup wizard lets you choose the watched folder, installs FSClip for the
+current user, and starts it automatically. Administrator access is not required.
+FSClip can then be removed from Windows Settings under **Installed apps**.
+
+The setup executables are not yet code-signed, so Windows may show a SmartScreen
+warning. Verify the adjacent `.sha256` file if you want to check the download
+before running it.
+
+For command-line installation, run in PowerShell:
 
 ```powershell
 & ([scriptblock]::Create((Invoke-RestMethod 'https://github.com/N-Silbernagel/fs-clip/releases/latest/download/install.ps1')))
@@ -34,7 +48,15 @@ Run in PowerShell:
 
 The installer adds FSClip to your user PATH and starts it in the background. A scheduled task starts it automatically when you log in, without administrator privileges.
 
+If an older release was installed from PowerShell, run `fs-clip uninstall`
+before switching to the setup wizard.
+
 ## Configuration and management
+
+Windows setup users can run the same or a newer setup executable again to
+change the watched folder. Use Windows Settings under **Installed apps** to
+uninstall it. The commands below are also available from the installed
+executable, but the setup wizard does not add it to `PATH`.
 
 Installation uses `~/copy-to-clipboard` by default. Change the folder after
 installation:
@@ -85,6 +107,7 @@ Files that cannot be read or copied, and files with unsupported content types, a
 
 ## Roadmap
 * Evaluate GoReleaser's free Homebrew cask, Scoop, and `.deb`/`.rpm` support, including service setup and uninstall cleanup.
+* Add Windows Authenticode signing for the setup executable.
 * Tests + CI badges
 
 ## Building from source
@@ -100,8 +123,10 @@ go vet ./...
 Race-enabled tests require a C compiler.
 
 Releases wait for the shared test workflow, then one Ubuntu job runs GoReleaser
-to build and publish all six release targets. Each archive contains the executable,
-README, and license; releases include a shared checksum manifest.
+to build and publish all six release targets. Two Windows jobs then wrap the
+Windows binaries in Inno Setup installers and publish installer-specific SHA-256
+files. Each archive contains the executable, README, and license; releases include
+a shared checksum manifest for the archives.
 
 ## Clipboard integration tests
 
@@ -135,9 +160,11 @@ without deleting watched files.
 They then run the clipboard suite against the installed executable. On macOS and
 Linux, service-manager commands are recorded and generated service files are checked.
 On Windows, tests register the real login task and verify its settings, repeat
-installs, and text and image clipboard access. Tests remove the
-task afterward. These tests do not simulate a fresh login; macOS and Windows
-installer coverage is verified when their CI jobs pass.
+installs, externally managed activation and deactivation, and text and image
+clipboard access. Tests remove the task afterward. The Windows job also compiles
+the Inno Setup definition. These tests do not simulate a fresh login or click
+through the setup wizard; macOS and Windows installer coverage is verified when
+their CI jobs pass.
 
 ## Contributing
 
